@@ -1,0 +1,550 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>3Cs of Contracting — Live | 628 Digital Design</title>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.7.1/firebase-database-compat.js"></script>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;font-family:Georgia,serif;background:#0b3030;color:#E9F5F5}
+#app{min-height:100vh}
+.screen{min-height:100vh;display:flex;align-items:center;justify-content:center;padding:16px}
+.card{background:#0d2f2f;border-radius:14px;padding:26px;max-width:460px;width:100%;box-shadow:0 8px 32px rgba(0,0,0,.5)}
+.badge{font-size:10px;letter-spacing:3px;color:#3AAFC2;text-transform:uppercase;margin-bottom:6px}
+h1{font-size:21px;color:#E9F5F5;margin-bottom:4px}
+.sub{font-size:13px;color:#3AAFC2;margin-bottom:4px}
+.hint{font-size:11px;color:#4a8888;line-height:1.6}
+.inp{width:100%;padding:10px 14px;border-radius:8px;border:1px solid #2B8C8C;background:#1A6B6B;color:#E9F5F5;font-size:15px;font-family:Georgia,serif}
+.inp:focus{outline:2px solid #3AAFC2}
+.inp::placeholder{color:#4a8888}
+.btn{width:100%;padding:12px 0;border-radius:10px;font-size:15px;font-family:Georgia,serif;cursor:pointer;font-weight:bold;border:none;transition:opacity .15s}
+.btn:hover{opacity:.85}
+.btn-p{background:#3AAFC2;color:#fff}
+.btn-s{background:transparent;border:1px solid #2B8C8C;color:#3AAFC2}
+.btn-g{background:#FFD700;color:#1a1000}
+.btn-sm{padding:8px 0;font-size:12px}
+.mt8{margin-top:8px}.mt12{margin-top:12px}.mt16{margin-top:16px}
+.divl{text-align:center;color:#2B8C8C;font-size:10px;margin:12px 0;letter-spacing:2px}
+.scores{display:flex;flex-wrap:wrap;gap:6px;justify-content:center;margin-bottom:10px}
+.sc{background:#0d2f2f;border-radius:10px;padding:6px 12px;text-align:center;min-width:82px}
+.sc-n{font-size:10px;font-weight:bold;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:90px}
+.sc-v{font-size:18px;font-weight:bold}
+.sc-s{font-size:8px;letter-spacing:1px;color:#3AAFC2}
+.board-wrap{overflow-x:auto}
+.board{min-width:360px;max-width:780px;margin:0 auto}
+.bgrid{display:grid;gap:4px}
+.cat-h{background:#1A6B6B;border-radius:6px;padding:7px 4px;text-align:center;font-size:8px;font-weight:bold;line-height:1.3;display:flex;align-items:center;justify-content:center;min-height:38px}
+.tile{border:none;border-radius:6px;padding:13px 2px;text-align:center;font-weight:bold;font-family:Georgia,serif;font-size:17px;cursor:pointer}
+.tile-a{background:#2B8C8C;color:#E9F5F5}.tile-a:hover{background:#3AAFC2}
+.tile-d{background:#0a1f1f;color:#1a4a4a;cursor:default;font-size:11px}
+.overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;z-index:200;padding:12px}
+.clue-box{background:#1A6B6B;border-radius:10px;padding:14px 12px;margin-bottom:14px;text-align:center;min-height:56px;display:flex;align-items:center;justify-content:center}
+.clue-t{font-size:14px;line-height:1.55}
+.choices{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
+.ch{padding:11px 8px;border-radius:8px;font-family:Georgia,serif;font-size:12px;text-align:left;line-height:1.4;cursor:pointer;transition:all .15s}
+.tbar{height:5px;border-radius:3px;margin-bottom:12px;overflow:hidden;background:#1a4a4a}
+.tfill{height:100%;border-radius:3px;transition:width 1s linear,background .5s}
+.buzz{width:100%;padding:44px 20px;font-size:30px;border-radius:16px;background:#3AAFC2;border:none;color:#fff;font-family:Georgia,serif;cursor:pointer;font-weight:bold;margin:16px 0;box-shadow:0 6px 20px rgba(58,175,194,.4);transition:transform .1s}
+.buzz:active{transform:scale(.97)}
+.buzz:disabled{background:#2B8C8C;opacity:.5;cursor:default}
+.plist .pi{display:flex;align-items:center;gap:8px;padding:8px 12px;background:#1A6B6B;border-radius:8px;margin-bottom:6px;font-size:13px}
+.fj-bg{background:#160e00;min-height:100vh}
+.fj-card{background:#1f1400;border:1px solid #5a3e00;border-radius:16px;padding:24px;max-width:520px;width:100%}
+.tc{text-align:center}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<script>
+// ── FIREBASE ───────────────────────────────────────────────────────────────────
+firebase.initializeApp({ databaseURL: 'https://cs-contracting-game-default-rtdb.firebaseio.com' });
+const db = firebase.database();
+
+// ── GAME DATA ──────────────────────────────────────────────────────────────────
+const CATS=["Capability Statements","Certifications","Corporate Bios","Networking & Buyers","Supplier Diversity"];
+const PTS=[100,200,300,400,500];
+const PC=["#3AAFC2","#E97C3A","#A855F7","#22C55E","#F43F5E"];
+const QT=30,FJT=60;
+
+const Q={
+"Capability Statements":{
+  100:{clue:"This essential one-page marketing document summarizes core competencies and past performance for government and corporate buyers.",choices:["Business Plan","Capability Statement","Executive Summary","Pitch Deck"],correct:1},
+  200:{clue:"This section uses numeric codes to classify the types of work a company performs — critical for procurement matching.",choices:["ZIP Codes","SIC Codes","NAICS Codes","PSC Codes"],correct:2},
+  300:{clue:"A capability statement should always be tailored for this specific audience before submitting to any new procurement opportunity.",choices:["Your accountant","The target buyer or agency","A business mentor","The SBA"],correct:1},
+  400:{clue:"This section demonstrates your track record with previous contracts, clients, and measurable project outcomes.",choices:["Core Competencies","Company Overview","Past Performance","Differentiators"],correct:2},
+  500:{clue:"This federal identifier — replacing the DUNS number — must be active in SAM.gov before a business can legally compete for federal contracts.",choices:["EIN","DUNS Number","UEI","CAGE Code"],correct:2}
+},
+"Certifications":{
+  100:{clue:"This federal small business certification is granted to businesses that are at least 51% owned, operated, and controlled by women.",choices:["DBE","MBE","WOSB","8(a)"],correct:2},
+  200:{clue:"This SBA program gives small disadvantaged businesses access to set-aside contracts, mentor-protégé relationships, and sole-source awards.",choices:["HUBZone","8(a) Program","SDVOSB","VOSB"],correct:1},
+  300:{clue:"Required for federally-funded transportation and infrastructure contracts, this certification is administered at the state level.",choices:["WBE","MBE","SBE","DBE"],correct:3},
+  400:{clue:"This mandatory federal registration portal — where businesses must maintain an active profile — is the gateway to all federal contracting.",choices:["SAM.gov","USASpending.gov","Grants.gov","FPDS.gov"],correct:0},
+  500:{clue:"This SBA certification recognizes businesses in historically underutilized geographic areas and provides federal set-asides and price preferences.",choices:["Enterprise Zone","HUBZone","Opportunity Zone","Promise Zone"],correct:1}
+},
+"Corporate Bios":{
+  100:{clue:"A professional corporate bio submitted with a proposal is typically written in this grammatical person to convey a formal, objective tone.",choices:["First person","Second person","Third person","Passive voice only"],correct:2},
+  200:{clue:"A strong corporate bio should open with this key information to immediately establish credibility and mission alignment.",choices:["Office location","Number of employees","Core mission and years in business","Social media presence"],correct:2},
+  300:{clue:"When submitting a bio with a proposal, it must be customized to mirror the language and priorities found in this buyer-issued document.",choices:["Your website About page","The RFP or Statement of Work","Your LinkedIn profile","Your investor deck"],correct:1},
+  400:{clue:"This element of a corporate bio distinguishes your company by spotlighting awards, certifications, unique methodologies, or notable clients.",choices:["References","Differentiators","Financial highlights","Employee biographies"],correct:1},
+  500:{clue:"A corporate bio used in government proposals should align with this section of a solicitation — it tells you exactly how you will be scored.",choices:["The budget section","The evaluation criteria","The cover page instructions","The appendix"],correct:1}
+},
+"Networking & Buyers":{
+  100:{clue:"This brief, memorable introduction — delivered in 30 seconds or less — tells a buyer who you are, what you do, and the problem you solve.",choices:["Business card","Elevator pitch","Capability statement","Cold call"],correct:1},
+  200:{clue:"This type of procurement event brings small business owners face-to-face with contracting officers and prime contractors.",choices:["Trade show","Matchmaking event","Business expo","Industry day"],correct:1},
+  300:{clue:"Before meeting a contracting officer, savvy business owners study this annually published document revealing agency procurement plans.",choices:["Annual report","Procurement forecast","Budget request","Strategic plan"],correct:1},
+  400:{clue:"This strategy — sending a personalized message within 24-48 hours of meeting a buyer — dramatically increases your chances of being remembered.",choices:["Cold calling","Timely follow-up within 48 hours","Mailing a brochure","Posting on social media"],correct:1},
+  500:{clue:"This federal database lets businesses research awarded contracts by agency, NAICS code, and dollar value — revealing buying patterns and the right officers to target.",choices:["LinkedIn Premium","USASpending.gov","Google Analytics","Grants.gov"],correct:1}
+},
+"Supplier Diversity":{
+  100:{clue:"This business practice — adopted by corporations and agencies — intentionally includes small, minority, women-owned, and veteran-owned businesses in purchasing.",choices:["Affirmative action","Supplier diversity","Inclusive subcontracting","Vendor outreach"],correct:1},
+  200:{clue:"This national organization certifies minority-owned businesses and connects them with Fortune 500 supplier diversity programs.",choices:["SBA","NMSDC","WBENC","SCORE"],correct:1},
+  300:{clue:"To prevent 'front companies,' supplier diversity certifications verify that diverse owners exercise this over day-to-day management and long-term decisions.",choices:["Majority of profits","Operational control and management","Marketing responsibility","Accounting oversight"],correct:1},
+  400:{clue:"This contract opportunity — available through large prime contractors on government projects — is a primary entry point for certified diverse businesses.",choices:["Sole-source award","Subcontracting opportunity","Grant award","Cooperative agreement"],correct:1},
+  500:{clue:"This is the federal government's annual small business prime contracting goal as a percentage of all eligible federal contract spending.",choices:["10 percent","15 percent","23 percent","30 percent"],correct:2}
+}};
+
+const FJQ={cat:"The Complete 3Cs",clue:"In supplier diversity, this SBA-sponsored formal relationship — where a large established company develops a smaller diverse firm through shared resources, mentoring, and contract pipeline — can dramatically accelerate diverse business growth in the federal marketplace.",choices:["Strategic Alliance Agreement","Mentor-Protégé Program","Teaming Agreement","Joint Venture Contract"],correct:1};
+
+// ── SESSION ────────────────────────────────────────────────────────────────────
+let sess=null,gs=null,roomRef=null,localTmr=null,localT=QT,tmrKey=null;
+function loadSess(){try{sess=JSON.parse(localStorage.getItem('628-jeopardy')||'null')}catch{sess=null}}
+function saveSess(s){sess=s;localStorage.setItem('628-jeopardy',JSON.stringify(s))}
+function clearSess(){sess=null;localStorage.removeItem('628-jeopardy')}
+
+// ── FIREBASE HELPERS ───────────────────────────────────────────────────────────
+function makeCode(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';return Array.from({length:4},()=>c[Math.floor(Math.random()*c.length)]).join('')}
+
+function makeDDs(){const pool=[];for(const c of CATS)for(const p of[200,300,400,500])pool.push(`${c}|${p}`);return pool.sort(()=>Math.random()-.5).slice(0,2)}
+
+function freshState(hostName){return{phase:'lobby',players:[{name:hostName||'Host',score:0}],answered:{},selector:0,dds:makeDDs(),activeQ:null,buzzed:-1,choice:-1,showAns:false,result:null,lockedWager:0,fjWagers:null,fjAnswers:null,fjRevealIdx:0,fjRevealAnswers:null,timeStart:0}}
+
+function toArr(obj){if(!obj)return[];if(Array.isArray(obj))return obj;return Object.keys(obj).sort((a,b)=>Number(a)-Number(b)).map(k=>obj[k])}
+
+function norm(raw){
+  if(!raw)return null;
+  return{...raw,
+    players:toArr(raw.players),
+    dds:toArr(raw.dds),
+    fjWagers:raw.fjWagers?toArr(raw.fjWagers):null,
+    fjAnswers:raw.fjAnswers?toArr(raw.fjAnswers):null,
+    fjRevealAnswers:raw.fjRevealAnswers?toArr(raw.fjRevealAnswers):null,
+  };
+}
+
+async function createRoom(hostName){
+  let code;
+  for(let i=0;i<10;i++){code=makeCode();const s=await db.ref(`rooms/${code}`).get();if(!s.exists())break}
+  await db.ref(`rooms/${code}`).set(freshState(hostName));
+  return code;
+}
+
+function listenRoom(room){
+  if(roomRef)roomRef.off();
+  roomRef=db.ref(`rooms/${room}`);
+  roomRef.on('value',snap=>{
+    if(!snap.exists())return;
+    gs=norm(snap.val());
+    const key=gs.phase+(gs.timeStart||0);
+    if(gs.timeStart&&key!==tmrKey){
+      tmrKey=key;
+      const maxT=gs.phase==='fj_question'?FJT:QT;
+      localT=Math.max(0,maxT-Math.floor((Date.now()-gs.timeStart)/1000));
+      startLocalTimer(maxT);
+    }
+    render();
+  });
+}
+
+const setRoom=(room,state)=>db.ref(`rooms/${room}`).set(state);
+const updRoom=(room,changes)=>db.ref(`rooms/${room}`).update(changes);
+
+async function txBuzz(room,idx){
+  const res=await db.ref(`rooms/${room}/buzzed`).transaction(cur=>(cur===-1||cur===null||cur===undefined)?idx:undefined);
+  return res.committed;
+}
+
+// ── TIMER ──────────────────────────────────────────────────────────────────────
+function startLocalTimer(maxT){
+  if(localTmr)clearInterval(localTmr);
+  localTmr=setInterval(()=>{
+    if(localT>0){localT--;
+      const el=document.getElementById('tv'),bar=document.getElementById('tb');
+      if(el)el.textContent=localT+'s';
+      if(bar){bar.style.width=`${(localT/maxT)*100}%`;bar.style.background=tc(localT)}
+    }else clearInterval(localTmr);
+  },1000);
+}
+
+// ── HELPERS ────────────────────────────────────────────────────────────────────
+const app=()=>document.getElementById('app');
+const tc=t=>t>15?'#22C55E':t>8?'#f59e0b':'#ef4444';
+const done=()=>gs?Object.values(gs.answered||{}).reduce((s,c)=>s+Object.keys(c).length,0):0;
+const total=CATS.length*PTS.length;
+const isHost=()=>!!sess?.isHost;
+const myIdx=()=>sess?.idx??0;
+
+function scoreCards(hl){
+  if(!gs?.players)return'';
+  return`<div class="scores">${gs.players.map((p,i)=>`<div class="sc" style="border:2px solid ${PC[i%PC.length]};${hl===i?`box-shadow:0 0 12px ${PC[i%PC.length]}55`:''}"><div class="sc-n" style="color:${PC[i%PC.length]}">${p.name}</div><div class="sc-v" style="color:${p.score<0?'#ef4444':'#E9F5F5'}">${p.score<0?'-':''}$${Math.abs(p.score).toLocaleString()}</div>${gs.selector===i?'<div class="sc-s">▶ PICKING</div>':''}</div>`).join('')}</div>`;
+}
+
+// ── RENDER ─────────────────────────────────────────────────────────────────────
+function render(){
+  if(!sess){renderLobby();return}
+  if(!gs){app().innerHTML=`<div class="screen"><div class="card tc"><div class="badge">628 Digital Design</div><h1>Connecting…</h1></div></div>`;return}
+  const{phase}=gs;
+  if(phase==='gameover'){renderGameOver();return}
+  if(phase==='fj_wager'){renderFJWager();return}
+  if(phase==='fj_question'){renderFJQ();return}
+  if(phase==='fj_reveal'){renderFJReveal();return}
+  isHost()?renderHost():renderPlayer();
+}
+
+// ── LOBBY ──────────────────────────────────────────────────────────────────────
+function renderLobby(){
+  const jc=new URLSearchParams(location.search).get('join')||'';
+  app().innerHTML=`<div class="screen"><div class="card">
+    <div class="tc" style="margin-bottom:20px">
+      <div class="badge">628 Digital Design Presents</div>
+      <h1>The 3Cs of Contracting</h1>
+      <div class="sub">Live Multiplayer Challenge</div>
+      <div class="hint" style="margin-top:6px">Capability Statements · Certifications · Corporate Bios<br>Networking & Buyers · Supplier Diversity</div>
+    </div>
+    <div style="margin-bottom:10px"><div style="font-size:12px;color:#E9F5F5;margin-bottom:4px">Create a New Game — Host Name</div>
+      <input class="inp" id="hname" placeholder="Your name" maxlength="20"></div>
+    <button class="btn btn-p" onclick="doCreate()">Create Game 🏆</button>
+    <div class="divl">— HAVE A ROOM CODE? —</div>
+    ${jc?`<div style="background:#1A6B6B;border-radius:8px;padding:10px;tc;margin-bottom:10px;text-align:center"><div style="font-size:9px;color:#3AAFC2;letter-spacing:2px;margin-bottom:2px">JOINING ROOM</div><div style="font-size:26px;font-weight:bold;letter-spacing:6px">${jc}</div></div>`:''}
+    <div style="display:flex;gap:8px;margin-bottom:8px">
+      <input class="inp" id="rcode" placeholder="Room code" maxlength="4" value="${jc}" style="text-transform:uppercase;letter-spacing:4px;font-size:18px;text-align:center;flex:1">
+      <input class="inp" id="pname" placeholder="Your name" maxlength="20" style="flex:2">
+    </div>
+    <button class="btn btn-s" onclick="doJoin()">Join Game 🎯</button>
+  </div></div>`;
+  document.getElementById(jc?'pname':'hname')?.focus();
+}
+
+async function doCreate(){
+  const name=(document.getElementById('hname')?.value||'').trim();
+  if(!name){alert('Please enter your name');return}
+  app().innerHTML=`<div class="screen"><div class="card tc"><h1 style="color:#3AAFC2">Creating room…</h1></div></div>`;
+  try{
+    const code=await createRoom(name);
+    saveSess({room:code,idx:0,name,isHost:true});
+    history.replaceState({},'','/');
+    listenRoom(code);
+  }catch(e){app().innerHTML=`<div class="screen"><div class="card tc"><h1 style="color:#ef4444">Error: ${e.message}</h1><button class="btn btn-s mt16" onclick="renderLobby()">Try Again</button></div></div>`}
+}
+
+async function doJoin(){
+  const code=(document.getElementById('rcode')?.value||'').toUpperCase().trim();
+  const name=(document.getElementById('pname')?.value||'').trim();
+  if(code.length!==4){alert('Please enter a valid 4-letter room code');return}
+  if(!name){alert('Please enter your name');return}
+  app().innerHTML=`<div class="screen"><div class="card tc"><h1 style="color:#3AAFC2">Joining ${code}…</h1></div></div>`;
+  try{
+    const snap=await db.ref(`rooms/${code}`).get();
+    if(!snap.exists())throw new Error('Room not found');
+    const state=norm(snap.val());
+    const idx=state.players.length;
+    const newPlayers=[...state.players,{name,score:0}];
+    await updRoom(code,{players:newPlayers});
+    saveSess({room:code,idx,name,isHost:false});
+    history.replaceState({},'','/');
+    listenRoom(code);
+  }catch(e){app().innerHTML=`<div class="screen"><div class="card tc"><h1 style="color:#ef4444">Could not join</h1><p class="hint mt12">Room not found or check your code.</p><button class="btn btn-s mt16" onclick="clearSess();renderLobby()">Back</button></div></div>`}
+}
+
+// ── HOST VIEW ──────────────────────────────────────────────────────────────────
+function renderHost(){
+  const{phase}=gs;
+  const shareUrl=`${location.origin}/?join=${sess.room}`;
+  let html=`<div style="padding:10px 8px;min-height:100vh;background:#0b3030">
+    <div class="tc" style="margin-bottom:6px"><div style="font-size:15px;font-weight:bold">3Cs of Contracting</div>
+    <div style="font-size:9px;color:#3AAFC2;letter-spacing:2px">HOST · ROOM <b style="letter-spacing:4px">${sess.room}</b></div></div>
+    ${scoreCards(gs.selector)}`;
+
+  if(phase==='lobby'){
+    html+=`<div class="card" style="max-width:500px;margin:0 auto">
+      <div class="tc" style="margin-bottom:14px">
+        <div style="font-size:11px;color:#3AAFC2;margin-bottom:6px">Share this link with players:</div>
+        <div style="background:#1A6B6B;border-radius:8px;padding:10px;font-size:12px;word-break:break-all">${shareUrl}</div>
+        <button class="btn btn-s btn-sm mt8" style="max-width:160px;display:inline-block" onclick="navigator.clipboard.writeText('${shareUrl}').then(()=>this.textContent='✓ Copied!')">📋 Copy Join Link</button>
+      </div>
+      <div style="font-size:11px;color:#4a8888;margin-bottom:8px">Players joined (${gs.players.length}):</div>
+      <div class="plist">${gs.players.map((p,i)=>`<div class="pi"><span style="color:${PC[i%PC.length]}">●</span>${p.name}${i===0?' 👑 Host':''}</div>`).join('')}</div>
+      <div style="font-size:10px;color:#4a8888;text-align:center;margin:12px 0">Waiting for everyone, then click Start!</div>
+      <button class="btn btn-p" onclick="hostStart()">Start Game 🎯</button>
+    </div>`;
+  }else if(phase==='game'){
+    html+=`<div class="board-wrap"><div class="board">
+      <div class="bgrid" style="grid-template-columns:repeat(${CATS.length},1fr)">
+        ${CATS.map(cat=>`<div class="cat-h">${cat}</div>`).join('')}
+        ${PTS.map(pts=>CATS.map(cat=>{const d=gs.answered[cat]?.[pts];return`<button class="${d?'tile tile-d':'tile tile-a'}" ${d?'disabled':''} onclick="${d?'':'hostPick(\''+cat+'\','+pts+')'}">${d?'✓':'$'+pts}</button>`}).join('')).join('')}
+      </div>
+      <div class="tc" style="margin-top:8px;color:#4a8888;font-size:10px">${done()}/${total} answered · Selector: <span style="color:#3AAFC2">${gs.players[gs.selector]?.name}</span></div>
+    </div></div>`;
+  }else if(phase==='question'||phase==='dailydouble'){
+    html+=renderHostQ();
+  }
+
+  html+=`<div class="tc" style="margin-top:12px"><button class="btn btn-s btn-sm" style="max-width:180px;display:inline-block" onclick="if(confirm('End game?'))hostEnd()">End Game</button></div>`;
+  if(phase==='dailydouble')html+=renderDDModal();
+  html+=`</div>`;
+  app().innerHTML=html;
+}
+
+function renderHostQ(){
+  if(!gs.activeQ)return'';
+  const{clue,choices,correct,isDD,cat,pts}=gs.activeQ;
+  let h=`<div style="max-width:600px;margin:0 auto;background:#0d2f2f;border-radius:16px;padding:20px">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="color:${isDD?'#FFD700':'#3AAFC2'};font-size:11px">${isDD?'⭐ DAILY DOUBLE':cat}</span>
+      <div style="display:flex;align-items:center;gap:10px">
+        <span style="font-weight:bold">${isDD?`Wager: $${gs.lockedWager}`:`$${pts}`}</span>
+        ${!gs.showAns?`<span id="tv" style="color:${tc(localT)};font-size:18px;font-weight:bold">${localT}s</span>`:''}
+      </div>
+    </div>
+    ${!gs.showAns?`<div class="tbar"><div id="tb" class="tfill" style="width:${(localT/QT)*100}%;background:${tc(localT)}"></div></div>`:''}
+    <div class="clue-box"><p class="clue-t">${clue}</p></div>`;
+
+  if(!gs.showAns){
+    if(gs.buzzed===-1){
+      h+=`<div style="color:#4a8888;text-align:center;font-size:10px;letter-spacing:2px;margin-bottom:10px">— WAITING FOR BUZZ —</div>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;justify-content:center;margin-bottom:12px">
+          ${gs.players.map((p,i)=>`<button onclick="hostForceBuzz(${i})" style="padding:8px 14px;border-radius:8px;border:2px solid ${PC[i%PC.length]};background:transparent;color:${PC[i%PC.length]};font-size:12px;cursor:pointer;font-family:Georgia,serif">🔔 ${p.name}</button>`).join('')}
+        </div>`;
+    }else{
+      h+=`<div style="color:${PC[gs.buzzed%PC.length]};text-align:center;font-size:15px;font-weight:bold;margin-bottom:12px">🔔 ${gs.players[gs.buzzed]?.name} is answering…</div>`;
+    }
+  }
+
+  h+=`<div class="choices">`;
+  choices.forEach((ch,ci)=>{
+    let bg='#1A6B6B',bd='#2B8C8C',co='#E9F5F5';
+    if(gs.showAns){if(ci===correct){bg='#14532d';bd='#22C55E'}else if(ci===gs.choice){bg='#450a0a';bd='#ef4444'}}
+    const canClick=!gs.showAns&&(gs.buzzed!==-1||isDD);
+    h+=`<button class="ch" style="background:${bg};border:2px solid ${bd};color:${co}" ${canClick?`onclick="hostAnswer(${ci})"`:'disabled'}><b>${'ABCD'[ci]}.</b> ${ch}</button>`;
+  });
+  h+=`</div>`;
+
+  if(gs.showAns){
+    const p=isDD?gs.lockedWager:pts;
+    h+=`<div class="tc"><div style="color:${gs.result===true?'#22C55E':gs.result==='timeout'?'#f59e0b':'#ef4444'};font-size:16px;font-weight:bold;margin-bottom:4px">
+      ${gs.result===true?`✅ Correct! +$${p}`:gs.result===false?`❌ Wrong! -$${p}`:'⏱ Time\'s Up!'}
+    </div><button class="btn btn-p btn-sm" style="max-width:220px;display:inline-block;margin-top:10px" onclick="hostContinue()">${done()>=total?'Final Jeopardy! ⭐':'Continue →'}</button></div>`;
+  }
+  h+=`</div>`;return h;
+}
+
+function renderDDModal(){
+  if(!gs.activeQ?.isDD)return'';
+  const maxW=Math.max(gs.players[gs.selector]?.score||0,500);
+  return`<div class="overlay"><div style="background:#1f1400;border-radius:16px;padding:24px;max-width:400px;width:100%;text-align:center;border:1px solid #5a3e00">
+    <div style="font-size:9px;color:#FFD700;letter-spacing:3px;margin-bottom:8px">⭐ ${gs.activeQ.cat}</div>
+    <div style="font-size:30px;font-weight:bold;color:#FFD700;margin-bottom:6px">DAILY DOUBLE!</div>
+    <div style="color:#f0d98a;font-size:13px;margin-bottom:16px">${gs.players[gs.selector]?.name}, place your wager!</div>
+    <div style="background:#0d0900;border-radius:10px;padding:14px;margin-bottom:14px;border:1px solid #3a2800">
+      <div style="color:#666;font-size:11px;margin-bottom:8px">Max: $${maxW.toLocaleString()}</div>
+      <input type="number" id="ddw" min="100" max="${maxW}" value="100" style="width:100%;padding:10px;border-radius:8px;border:2px solid #FFD700;background:#1a1000;color:#FFD700;font-size:22px;font-family:Georgia,serif;text-align:center;box-sizing:border-box">
+      <input type="range" min="100" max="${maxW}" value="100" oninput="document.getElementById('ddw').value=this.value" style="width:100%;margin-top:10px;accent-color:#FFD700">
+    </div>
+    <button class="btn btn-g" onclick="hostLockDD()">Lock In Wager →</button>
+  </div></div>`;
+}
+
+// ── PLAYER VIEW ────────────────────────────────────────────────────────────────
+function renderPlayer(){
+  const{phase}=gs;const me=gs.players[myIdx()];
+  const buzzed=gs.buzzed===myIdx();const otherBuzzed=gs.buzzed!==-1&&!buzzed;const myDD=gs.activeQ?.isDD&&gs.selector===myIdx();
+  let html=`<div style="min-height:100vh;background:#0b3030;padding:10px 12px">
+    <div class="tc" style="margin-bottom:8px">
+      <div style="font-size:14px;font-weight:bold">3Cs of Contracting</div>
+      <div style="font-size:9px;color:#3AAFC2;letter-spacing:2px">ROOM ${sess.room} · <span style="color:${PC[myIdx()%PC.length]}">${me?.name}</span></div>
+    </div>${scoreCards(gs.selector)}`;
+
+  if(phase==='lobby'){
+    html+=`<div class="tc" style="padding:30px 16px"><div style="font-size:40px;margin-bottom:12px">⏳</div><div style="font-size:18px;margin-bottom:8px">Game starting soon!</div><div class="hint">You're in as <span style="color:${PC[myIdx()%PC.length]}">${me?.name}</span>. Waiting for host…</div></div>`;
+  }else if(phase==='game'){
+    const sel=gs.players[gs.selector]?.name;
+    html+=`<div class="tc" style="padding:30px 16px"><div style="font-size:36px;margin-bottom:12px">${gs.selector===myIdx()?'🎯':'👀'}</div><div style="font-size:17px;margin-bottom:6px">${gs.selector===myIdx()?"It's YOUR turn to pick!":`${sel} is picking…`}</div><div class="hint">${done()}/${total} answered</div></div>`;
+  }else if(phase==='question'||phase==='dailydouble'){
+    html+=renderPlayerQ(buzzed,otherBuzzed,myDD);
+  }
+  html+=`</div>`;app().innerHTML=html;
+}
+
+function renderPlayerQ(buzzed,otherBuzzed,myDD){
+  if(!gs.activeQ)return'';
+  const{clue,choices,correct,isDD}=gs.activeQ;
+  let h=`<div style="background:#0d2f2f;border-radius:14px;padding:18px;max-width:520px;margin:0 auto">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+      <span style="color:${isDD?'#FFD700':'#3AAFC2'};font-size:11px">${isDD?'⭐ DAILY DOUBLE':gs.activeQ.cat} · $${gs.activeQ.pts}</span>
+      <span id="tv" style="color:${tc(localT)};font-size:18px;font-weight:bold">${localT}s</span>
+    </div>
+    <div class="tbar"><div id="tb" class="tfill" style="width:${(localT/QT)*100}%;background:${tc(localT)}"></div></div>
+    <div class="clue-box"><p class="clue-t">${clue}</p></div>`;
+
+  if(isDD&&!gs.showAns){
+    if(myDD){const maxW=Math.max(gs.players[myIdx()]?.score||0,500);
+      h+=`<div style="background:#0d0900;border-radius:10px;padding:14px;margin-bottom:12px;border:1px solid #5a3e00"><div style="color:#FFD700;text-align:center;font-size:11px;margin-bottom:8px">⭐ YOUR DAILY DOUBLE</div><input type="number" id="pddw" min="100" max="${maxW}" value="100" style="width:100%;padding:10px;border-radius:8px;border:2px solid #FFD700;background:#1a1000;color:#FFD700;font-size:20px;font-family:Georgia,serif;text-align:center;box-sizing:border-box"><input type="range" min="100" max="${maxW}" value="100" oninput="document.getElementById('pddw').value=this.value" style="width:100%;margin-top:10px;accent-color:#FFD700"><div class="hint tc" style="margin-top:8px">Host will lock in your wager!</div></div>`;
+    }else{
+      h+=`<div class="tc" style="padding:20px"><div style="font-size:36px;margin-bottom:8px">⭐</div><div style="font-size:16px;color:#FFD700">Daily Double!</div><div class="hint" style="margin-top:6px">${gs.players[gs.selector]?.name} is wagering…</div></div>`;
+    }
+  }
+
+  if(!isDD&&!gs.showAns){
+    h+=`<button class="buzz" ${gs.buzzed!==-1?'disabled':''} onclick="playerBuzz()">${gs.buzzed!==-1&&!buzzed?'Someone buzzed!':buzzed?'🔔 You buzzed!':'🔔 BUZZ IN!'}</button>`;
+    if(otherBuzzed)h+=`<div class="tc" style="font-size:13px;color:${PC[gs.buzzed%PC.length]};margin-top:-8px">${gs.players[gs.buzzed]?.name} is answering…</div>`;
+  }
+
+  if((buzzed||myDD||gs.showAns)&&(!isDD||gs.lockedWager>0)){
+    h+=`<div class="choices">`;
+    choices.forEach((ch,ci)=>{
+      let bg='#1A6B6B',bd='#2B8C8C',co='#E9F5F5';
+      if(gs.showAns){if(ci===correct){bg='#14532d';bd='#22C55E'}else if(ci===gs.choice){bg='#450a0a';bd='#ef4444'}}
+      const canClick=!gs.showAns&&(buzzed||myDD);
+      h+=`<button class="ch" style="background:${bg};border:2px solid ${bd};color:${co}" ${canClick?`onclick="playerAnswer(${ci})"`:'disabled'}><b>${'ABCD'[ci]}.</b> ${ch}</button>`;
+    });
+    h+=`</div>`;
+  }
+
+  if(gs.showAns){
+    const p=isDD?gs.lockedWager:gs.activeQ.pts;
+    h+=`<div class="tc" style="margin-top:10px"><div style="font-size:18px;font-weight:bold;color:${gs.result===true?'#22C55E':gs.result==='timeout'?'#f59e0b':'#ef4444'}">${gs.result===true?`✅ +$${p}`:gs.result===false?`❌ -$${p}`:'⏱ Time\'s Up!'}</div><div class="hint" style="margin-top:6px">Waiting for host…</div></div>`;
+  }
+  h+=`</div>`;return h;
+}
+
+// ── FINAL JEOPARDY ─────────────────────────────────────────────────────────────
+function renderFJWager(){
+  const me=myIdx();const myW=gs.fjWagers?.[me];const wagered=(gs.fjWagers||[]).filter(w=>w!==null&&w!==undefined).length;const allW=gs.fjWagers&&gs.fjWagers.length===gs.players.length&&gs.fjWagers.every(w=>w!==null&&w!==undefined);const maxW=Math.max(gs.players[me]?.score||0,500);
+  let inner;
+  if(isHost()){
+    inner=`<div style="font-size:9px;letter-spacing:3px;color:#FFD700;margin-bottom:8px">⭐ FINAL JEOPARDY</div><div style="font-size:28px;font-weight:bold;color:#FFD700;margin-bottom:6px">FINAL JEOPARDY!</div><div style="color:#f0d98a;font-size:13px;margin-bottom:16px">Category: <b>${FJQ.cat}</b></div><div class="hint tc" style="margin-bottom:16px">Players are wagering privately on their devices.</div>${scoreCards(-1)}<div style="color:#3AAFC2;font-size:13px;text-align:center;margin:12px 0">${wagered}/${gs.players.length} players wagered</div>${allW?`<button class="btn btn-g" onclick="hostStartFJQ()">Everyone's Ready — Start! 🎬</button>`:'<div class="hint tc">Waiting for all players to wager…</div>'}`;
+  }else{
+    inner=`<div style="font-size:9px;letter-spacing:3px;color:#FFD700;margin-bottom:8px">⭐ FINAL JEOPARDY</div><div style="font-size:28px;font-weight:bold;color:#FFD700;margin-bottom:6px">FINAL JEOPARDY!</div><div style="color:#f0d98a;font-size:13px;margin-bottom:16px">Category: <b>${FJQ.cat}</b></div>${myW!==null&&myW!==undefined?`<div class="tc" style="padding:20px"><div style="font-size:36px;margin-bottom:8px">✅</div><div style="font-size:16px;color:#22C55E">Wager locked: $${myW.toLocaleString()}</div><div class="hint" style="margin-top:8px">Waiting (${wagered}/${gs.players.length} done)…</div></div>`:`<div style="background:#0d0900;border-radius:10px;padding:14px;margin-bottom:14px;border:1px solid #3a2800"><div style="color:${PC[me%PC.length]};font-size:13px;font-weight:bold;margin-bottom:4px">${gs.players[me]?.name} — Private Wager</div><div class="hint" style="margin-bottom:10px">Others can't see this. Max: $${maxW.toLocaleString()}</div><input type="number" id="fjw" min="100" max="${maxW}" value="100" style="width:100%;padding:10px;border-radius:8px;border:2px solid #FFD700;background:#1a1000;color:#FFD700;font-size:22px;font-family:Georgia,serif;text-align:center;box-sizing:border-box"><input type="range" min="100" max="${maxW}" value="100" oninput="document.getElementById('fjw').value=this.value" style="width:100%;margin-top:10px;accent-color:#FFD700"></div><button class="btn btn-g" onclick="playerFJWager()">Lock In My Wager →</button>`}`;
+  }
+  app().innerHTML=`<div class="screen fj-bg"><div class="fj-card tc">${inner}</div></div>`;
+}
+
+function renderFJQ(){
+  const me=myIdx();const myAns=gs.fjAnswers?.[me];const answeredCount=(gs.fjAnswers||[]).filter(a=>a!==null&&a!==undefined).length;const allAns=gs.fjAnswers&&gs.fjAnswers.length===gs.players.length&&gs.fjAnswers.every(a=>a!==null&&a!==undefined);const tDone=localT<=0;
+  let inner=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="color:#FFD700;font-size:11px;font-weight:bold">⭐ Final Jeopardy — ${FJQ.cat}</div><div id="tv" style="color:${tc(localT)};font-size:20px;font-weight:bold">${localT}s</div></div><div class="tbar"><div id="tb" class="tfill" style="width:${(localT/FJT)*100}%;background:${tc(localT)}"></div></div><div style="background:#0d0900;border-radius:10px;padding:14px;margin-bottom:16px;text-align:center;border:1px solid #3a2800"><p style="color:#f0d98a;font-size:14px;line-height:1.55">${FJQ.clue}</p></div>`;
+  if(isHost()){
+    inner+=`<div class="hint tc" style="margin-bottom:10px">Players are answering on their devices</div>${scoreCards(-1)}<div style="color:#3AAFC2;font-size:12px;text-align:center;margin:10px 0">${answeredCount}/${gs.players.length} answered</div>${allAns||tDone?`<button class="btn btn-g mt8" onclick="hostFJReveal()">🎬 Reveal Results!</button>`:'<div class="hint tc">Waiting for all answers…</div>'}`;
+  }else{
+    inner+=`<div class="choices">`;FJQ.choices.forEach((ch,ci)=>{const picked=myAns===ci;inner+=`<button class="ch" style="border:2px solid ${picked?PC[me%PC.length]:'#3a2800'};background:${picked?'#0d2f2f':'#0d0900'};color:${picked?PC[me%PC.length]:'#888'}" onclick="playerFJAnswer(${ci})">${'ABCD'[ci]}. ${ch}${picked?' ✓':''}</button>`;});
+    inner+=`</div>`;if(myAns!==null&&myAns!==undefined)inner+=`<div style="color:#22C55E;text-align:center;font-size:12px;margin-top:8px">✓ Saved! Waiting for host to reveal…</div>`;
+  }
+  app().innerHTML=`<div class="screen fj-bg"><div class="fj-card" style="max-width:580px">${inner}</div></div>`;
+}
+
+function renderFJReveal(){
+  const pi=gs.fjRevealIdx||0;const p=gs.players[pi];const ans=gs.fjRevealAnswers?.[pi]??-1;const wager=gs.fjWagers?.[pi]||0;const ok=ans===FJQ.correct;
+  app().innerHTML=`<div class="screen fj-bg"><div class="fj-card tc">
+    <div style="font-size:9px;letter-spacing:3px;color:#FFD700;margin-bottom:10px">⭐ FINAL JEOPARDY REVEAL · ${pi+1} of ${gs.players.length}</div>
+    <div style="color:${PC[pi%PC.length]};font-size:20px;font-weight:bold;margin-bottom:4px">${p?.name}</div>
+    <div class="hint" style="margin-bottom:16px">Wagered: $${wager.toLocaleString()}</div>
+    <div style="background:#0d0900;border-radius:10px;padding:12px;margin-bottom:10px;border:1px solid #3a2800"><div style="color:#666;font-size:10px;margin-bottom:4px">Their answer:</div><div style="color:#f0d98a;font-size:14px;font-weight:bold">${ans===-1?'(No answer)':FJQ.choices[ans]}</div></div>
+    <div style="background:#0d0900;border-radius:10px;padding:12px;margin-bottom:14px;border:1px solid #3a2800"><div style="color:#666;font-size:10px;margin-bottom:4px">Correct answer:</div><div style="color:#3AAFC2;font-size:13px;font-style:italic">${FJQ.choices[FJQ.correct]}</div></div>
+    <div style="color:${ok?'#22C55E':'#ef4444'};font-size:22px;font-weight:bold;margin-bottom:4px">${ok?`✅ Correct! +$${wager.toLocaleString()}`:`❌ Wrong! -$${wager.toLocaleString()}`}</div>
+    <div class="hint" style="margin-bottom:20px">New score: <span style="color:#E9F5F5;font-weight:bold">$${(p?.score||0).toLocaleString()}</span></div>
+    ${isHost()?`<button class="btn btn-g" onclick="hostNextReveal()">${pi+1>=gs.players.length?'See Final Scores 🏆':'Next Player →'}</button>`:'<div class="hint">Waiting for host…</div>'}
+  </div></div>`;
+}
+
+function renderGameOver(){
+  const winner=gs.players.reduce((a,b)=>b.score>a.score?b:a);const wi=gs.players.indexOf(winner);
+  app().innerHTML=`<div class="screen"><div class="card tc" style="max-width:420px">
+    <div style="font-size:48px;margin-bottom:8px">🏆</div><h1>Game Over!</h1>
+    <div style="color:${PC[wi%PC.length]};font-size:15px;margin-bottom:20px">${winner.name} wins with $${winner.score.toLocaleString()}!</div>
+    ${gs.players.map((p,i)=>`<div style="display:flex;justify-content:space-between;padding:9px 14px;margin-bottom:7px;background:#1A6B6B;border-radius:8px"><span style="color:${PC[i%PC.length]};font-weight:bold">${i===wi?'👑 ':''} ${p.name}</span><span style="color:${p.score<0?'#ef4444':'#E9F5F5'};font-weight:bold">$${p.score.toLocaleString()}</span></div>`).join('')}
+    <button class="btn btn-s mt16" onclick="clearSess();location.reload()">Play Again</button>
+  </div></div>`;
+}
+
+// ── HOST ACTIONS ───────────────────────────────────────────────────────────────
+async function hostStart(){await updRoom(sess.room,{phase:'game'})}
+
+async function hostPick(cat,pts){
+  const isDD=gs.dds.includes(`${cat}|${pts}`);
+  await updRoom(sess.room,{phase:isDD?'dailydouble':'question',activeQ:{cat,pts,...Q[cat][pts],isDD},buzzed:-1,choice:-1,showAns:false,result:null,lockedWager:0,timeStart:Date.now()});
+}
+
+async function hostForceBuzz(idx){await updRoom(sess.room,{buzzed:idx})}
+
+async function hostAnswer(ci){
+  if(!gs.activeQ||gs.showAns)return;
+  const ok=ci===gs.activeQ.correct;
+  const pts=gs.activeQ.isDD?gs.lockedWager:gs.activeQ.pts;
+  const who=gs.activeQ.isDD?gs.selector:gs.buzzed;
+  if(who===-1&&!gs.activeQ.isDD)return;
+  const np=gs.players.map((p,i)=>({...p,score:i===who?p.score+(ok?pts:-pts):p.score}));
+  const na={...gs.answered,[gs.activeQ.cat]:{...(gs.answered[gs.activeQ.cat]||{}),[gs.activeQ.pts]:true}};
+  await updRoom(sess.room,{choice:ci,showAns:true,result:ok,players:np,answered:na,selector:ok?who:(gs.selector+1)%gs.players.length});
+}
+
+async function hostLockDD(){
+  const maxW=Math.max(gs.players[gs.selector]?.score||0,500);
+  const w=Math.max(100,Math.min(parseInt(document.getElementById('ddw')?.value||100),maxW));
+  await updRoom(sess.room,{phase:'question',lockedWager:w,timeStart:Date.now()});
+}
+
+async function hostContinue(){
+  if(done()>=total){await updRoom(sess.room,{phase:'fj_wager',fjWagers:gs.players.map(()=>null),fjAnswers:gs.players.map(()=>null)});}
+  else{await updRoom(sess.room,{phase:'game',activeQ:null});}
+}
+
+async function hostStartFJQ(){await updRoom(sess.room,{phase:'fj_question',timeStart:Date.now()})}
+
+async function hostFJReveal(){
+  const answers=gs.fjAnswers||gs.players.map(()=>-1);
+  const np=gs.players.map((p,i)=>{const ok=answers[i]===FJQ.correct;const w=gs.fjWagers?.[i]||0;return{...p,score:p.score+(ok?w:-w)}});
+  await updRoom(sess.room,{phase:'fj_reveal',fjRevealIdx:0,fjRevealAnswers:answers,players:np});
+}
+
+async function hostNextReveal(){
+  const next=(gs.fjRevealIdx||0)+1;
+  await updRoom(sess.room,{phase:next>=gs.players.length?'gameover':'fj_reveal',fjRevealIdx:next});
+}
+
+async function hostEnd(){await updRoom(sess.room,{phase:'gameover'})}
+
+// ── PLAYER ACTIONS ─────────────────────────────────────────────────────────────
+async function playerBuzz(){await txBuzz(sess.room,myIdx())}
+
+async function playerAnswer(ci){
+  if(!gs.activeQ||gs.showAns)return;
+  const who=gs.activeQ.isDD?gs.selector:gs.buzzed;
+  if(who!==myIdx())return;
+  const ok=ci===gs.activeQ.correct;
+  const pts=gs.activeQ.isDD?gs.lockedWager:gs.activeQ.pts;
+  const np=gs.players.map((p,i)=>({...p,score:i===who?p.score+(ok?pts:-pts):p.score}));
+  const na={...gs.answered,[gs.activeQ.cat]:{...(gs.answered[gs.activeQ.cat]||{}),[gs.activeQ.pts]:true}};
+  await updRoom(sess.room,{choice:ci,showAns:true,result:ok,players:np,answered:na,selector:ok?who:(gs.selector+1)%gs.players.length});
+}
+
+async function playerFJWager(){
+  const me=myIdx();const maxW=Math.max(gs.players[me]?.score||0,500);
+  const w=Math.max(100,Math.min(parseInt(document.getElementById('fjw')?.value||100),maxW));
+  await db.ref(`rooms/${sess.room}/fjWagers/${me}`).set(w);
+}
+
+async function playerFJAnswer(ci){
+  await db.ref(`rooms/${sess.room}/fjAnswers/${myIdx()}`).set(ci);
+}
+
+// ── INIT ───────────────────────────────────────────────────────────────────────
+loadSess();
+if(sess?.room){
+  app().innerHTML=`<div class="screen"><div class="card tc"><div class="badge">628 Digital Design</div><h1>Reconnecting…</h1></div></div>`;
+  listenRoom(sess.room);
+}else{
+  renderLobby();
+}
+</script>
+</body>
+</html>
