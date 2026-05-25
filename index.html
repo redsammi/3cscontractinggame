@@ -36,9 +36,11 @@ h1{font-size:21px;color:#E9F5F5;margin-bottom:4px}
 .board{min-width:360px;max-width:780px;margin:0 auto}
 .bgrid{display:grid;gap:4px}
 .cat-h{background:#1A6B6B;border-radius:6px;padding:7px 4px;text-align:center;font-size:8px;font-weight:bold;line-height:1.3;display:flex;align-items:center;justify-content:center;min-height:38px}
-.tile{border:none;border-radius:6px;padding:13px 2px;text-align:center;font-weight:bold;font-family:Georgia,serif;font-size:17px;cursor:pointer}
+.tile{border:none;border-radius:6px;padding:13px 2px;text-align:center;font-weight:bold;font-family:Georgia,serif;font-size:17px;cursor:pointer;position:relative}
 .tile-a{background:#2B8C8C;color:#E9F5F5}.tile-a:hover{background:#3AAFC2}
+.tile-ai{background:#1a4a2a;color:#E9F5F5;border:1px solid #22C55E}.tile-ai:hover{background:#1e5a32}
 .tile-d{background:#0a1f1f;color:#1a4a4a;cursor:default;font-size:11px}
+.ai-dot{position:absolute;top:3px;right:4px;font-size:8px}
 .overlay{position:fixed;inset:0;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;z-index:200;padding:12px}
 .clue-box{background:#1A6B6B;border-radius:10px;padding:14px 12px;margin-bottom:14px;text-align:center;min-height:56px;display:flex;align-items:center;justify-content:center}
 .clue-t{font-size:14px;line-height:1.55}
@@ -53,6 +55,7 @@ h1{font-size:21px;color:#E9F5F5;margin-bottom:4px}
 .fj-bg{background:#160e00;min-height:100vh}
 .fj-card{background:#1f1400;border:1px solid #5a3e00;border-radius:16px;padding:24px;max-width:520px;width:100%}
 .tc{text-align:center}
+.ai-badge{background:#14532d;border:1px solid #22C55E;border-radius:6px;padding:3px 8px;font-size:9px;color:#22C55E;display:inline-block;margin-bottom:8px;letter-spacing:1px}
 </style>
 </head>
 <body>
@@ -62,50 +65,218 @@ h1{font-size:21px;color:#E9F5F5;margin-bottom:4px}
 firebase.initializeApp({ databaseURL: 'https://cs-contracting-game-default-rtdb.firebaseio.com' });
 const db = firebase.database();
 
-// ── GAME DATA ──────────────────────────────────────────────────────────────────
+// ── CLOUDFLARE WORKER URL ──────────────────────────────────────────────────────
+// After setting up your Cloudflare Worker, replace the URL below with yours.
+// Leave as empty string to use only the static question bank (still randomized).
+const AI_WORKER_URL = '';  // e.g. 'https://3cs-ai.yourname.workers.dev'
+
+// ── CONSTANTS ──────────────────────────────────────────────────────────────────
 const CATS=["Capability Statements","Certifications","Corporate Bios","Networking & Buyers","Supplier Diversity"];
 const PTS=[100,200,300,400,500];
 const PC=["#3AAFC2","#E97C3A","#A855F7","#22C55E","#F43F5E"];
 const QT=30,FJT=60;
 
-const Q={
+// ── EXPANDED QUESTION BANK (4 questions per slot, 1 randomly selected per game) ─
+const QBANK={
 "Capability Statements":{
-  100:{clue:"This essential one-page marketing document summarizes core competencies and past performance for government and corporate buyers.",choices:["Business Plan","Capability Statement","Executive Summary","Pitch Deck"],correct:1},
-  200:{clue:"This section uses numeric codes to classify the types of work a company performs — critical for procurement matching.",choices:["ZIP Codes","SIC Codes","NAICS Codes","PSC Codes"],correct:2},
-  300:{clue:"A capability statement should always be tailored for this specific audience before submitting to any new procurement opportunity.",choices:["Your accountant","The target buyer or agency","A business mentor","The SBA"],correct:1},
-  400:{clue:"This section demonstrates your track record with previous contracts, clients, and measurable project outcomes.",choices:["Core Competencies","Company Overview","Past Performance","Differentiators"],correct:2},
-  500:{clue:"This federal identifier — replacing the DUNS number — must be active in SAM.gov before a business can legally compete for federal contracts.",choices:["EIN","DUNS Number","UEI","CAGE Code"],correct:2}
+100:[
+{clue:"This essential one-page marketing document summarizes core competencies and past performance for government and corporate buyers.",choices:["Business Plan","Capability Statement","Executive Summary","Pitch Deck"],correct:1},
+{clue:"Procurement experts recommend always having this document ready before attending any matchmaking event or industry day.",choices:["Proposal","Capability Statement","Contract Vehicle","Teaming Agreement"],correct:1},
+{clue:"Unlike a lengthy proposal, this concise document is sent proactively to introduce your company to buyers before an RFP is released.",choices:["White Paper","Capability Statement","Past Performance Report","Sources Sought Response"],correct:1},
+{clue:"Typically no longer than one page, this government marketing document is often the very first thing a contracting officer sees when evaluating a new vendor.",choices:["Annual Report","Capability Statement","Business Brochure","Business Plan"],correct:1}
+],
+200:[
+{clue:"This section of a capability statement uses numeric codes to classify the types of work a company performs — critical for procurement matching.",choices:["ZIP Codes","SIC Codes","NAICS Codes","PSC Codes"],correct:2},
+{clue:"These six-digit industry classification codes are used by the federal government to categorize businesses and determine small business size standards.",choices:["PSC Codes","CAGE Codes","NAICS Codes","UEI Numbers"],correct:2},
+{clue:"When registering in SAM.gov, you must select these codes carefully because buyers use them to search for and identify relevant suppliers.",choices:["Tax Codes","NAICS Codes","ZIP Codes","SIC Codes"],correct:1},
+{clue:"A capability statement listing outdated or inaccurate versions of these codes could cause a business to be overlooked for relevant contracting opportunities.",choices:["DUNS Numbers","NAICS Codes","CAGE Codes","EIN Numbers"],correct:1}
+],
+300:[
+{clue:"A capability statement should always be tailored for this specific audience before submitting to any new procurement opportunity.",choices:["Your accountant","The target buyer or agency","A business mentor","The SBA"],correct:1},
+{clue:"Sending a generic capability statement — rather than one customized for this reader — is one of the most common and costly mistakes small business vendors make.",choices:["Your bank","The target buyer or agency","Your chamber of commerce","A mentor"],correct:1},
+{clue:"Before attending a supplier diversity fair, smart vendors research and customize their capability statement for each of these in the room.",choices:["Other vendors","Target buyers and agencies","Event organizers","Media outlets"],correct:1},
+{clue:"This best practice — researching and mirroring the language of a specific procurement office — ensures your capability statement resonates with each reader.",choices:["Generic marketing","Tailoring for the target buyer","Cold outreach","Teaming"],correct:1}
+],
+400:[
+{clue:"This section of a capability statement demonstrates your track record with previous contracts, clients, and measurable project outcomes.",choices:["Core Competencies","Company Overview","Past Performance","Differentiators"],correct:2},
+{clue:"Contracting officers use this section of your capability statement to assess whether your company has successfully completed similar scopes of work.",choices:["Company Bio","Past Performance","NAICS Codes","Certifications"],correct:1},
+{clue:"When building this section of your capability statement, always include contract numbers, dollar values, and client points of contact where possible.",choices:["Core Competencies","Past Performance","Differentiators","Company Overview"],correct:1},
+{clue:"For a newer business, this capability statement section can include commercial clients, subcontracting experience, and relevant volunteer or pro bono work.",choices:["Certifications","Past Performance","Differentiators","Company Overview"],correct:1}
+],
+500:[
+{clue:"This federal identifier — replacing the DUNS number — must be active in SAM.gov before a business can legally compete for federal contracts.",choices:["EIN","DUNS Number","UEI","CAGE Code"],correct:2},
+{clue:"Assigned through SAM.gov registration, this unique 12-character alphanumeric identifier replaced the DUNS number in April 2022.",choices:["CAGE Code","EIN","DUNS Number","UEI"],correct:3},
+{clue:"A lapsed or inactive SAM.gov status — tied to this identifier — can disqualify a business from receiving a federal award even after winning a bid.",choices:["UEI","EIN","CAGE Code","Tax ID"],correct:0},
+{clue:"This free government-issued identifier — obtained through SAM.gov — is required on all federal contract proposals and must be renewed annually.",choices:["CAGE Code","UEI","EIN","DUNS"],correct:1}
+]
 },
 "Certifications":{
-  100:{clue:"This federal small business certification is granted to businesses that are at least 51% owned, operated, and controlled by women.",choices:["DBE","MBE","WOSB","8(a)"],correct:2},
-  200:{clue:"This SBA program gives small disadvantaged businesses access to set-aside contracts, mentor-protégé relationships, and sole-source awards.",choices:["HUBZone","8(a) Program","SDVOSB","VOSB"],correct:1},
-  300:{clue:"Required for federally-funded transportation and infrastructure contracts, this certification is administered at the state level.",choices:["WBE","MBE","SBE","DBE"],correct:3},
-  400:{clue:"This mandatory federal registration portal — where businesses must maintain an active profile — is the gateway to all federal contracting.",choices:["SAM.gov","USASpending.gov","Grants.gov","FPDS.gov"],correct:0},
-  500:{clue:"This SBA certification recognizes businesses in historically underutilized geographic areas and provides federal set-asides and price preferences.",choices:["Enterprise Zone","HUBZone","Opportunity Zone","Promise Zone"],correct:1}
+100:[
+{clue:"This federal small business certification is granted to businesses that are at least 51% owned, operated, and controlled by women.",choices:["DBE","MBE","WOSB","8(a)"],correct:2},
+{clue:"The federal government sets aside specific contracts exclusively for holders of this certification, which requires proof of 51% female ownership and control.",choices:["DBE","SDVOSB","WOSB","HUBZone"],correct:2},
+{clue:"This SBA-administered certification — requiring proof of ownership, management, and control by women — opens doors to federal set-aside contracts.",choices:["MBE","DBE","8(a)","WOSB"],correct:3},
+{clue:"A business must prove that women control both day-to-day operations AND long-term strategy to qualify for this federal certification.",choices:["8(a)","HUBZone","WOSB","DBE"],correct:2}
+],
+200:[
+{clue:"This SBA program gives small disadvantaged businesses access to set-aside contracts, mentor-protégé relationships, and sole-source awards.",choices:["HUBZone","8(a) Program","SDVOSB","VOSB"],correct:1},
+{clue:"This nine-year SBA program for socially and economically disadvantaged businesses limits participants to one lifetime participation period.",choices:["HUBZone","WOSB","8(a) Program","DBE"],correct:2},
+{clue:"Companies in this SBA program can receive sole-source contracts up to $4.5 million for services and $7 million for manufacturing without competition.",choices:["HUBZone","8(a) Program","SDVOSB","WOSB"],correct:1},
+{clue:"The graduation requirement of this SBA program — designed to prevent long-term dependency — means businesses must exit after nine years.",choices:["HUBZone","DBE","8(a) Program","WOSB"],correct:2}
+],
+300:[
+{clue:"Required for federally-funded transportation and infrastructure contracts, this certification is administered at the state level.",choices:["WBE","MBE","SBE","DBE"],correct:3},
+{clue:"State departments of transportation administer this federal certification, which is required for businesses seeking work on highway, transit, and airport projects.",choices:["WOSB","MBE","DBE","SBE"],correct:2},
+{clue:"This certification program, established under 49 CFR Part 26, ensures disadvantaged businesses can compete for federally-assisted transportation contracts.",choices:["SBE","MBE","WOSB","DBE"],correct:3},
+{clue:"Unlike WOSB which is federally administered, this transportation-specific certification is managed at the state level by departments of transportation.",choices:["MBE","DBE","SBE","HUBZone"],correct:1}
+],
+400:[
+{clue:"This mandatory federal registration portal — where businesses must maintain an active profile — is the gateway to all federal contracting opportunities.",choices:["SAM.gov","USASpending.gov","Grants.gov","FPDS.gov"],correct:0},
+{clue:"All federal contractors must renew their registration in this system annually or risk being removed from consideration for new contract awards.",choices:["Grants.gov","Beta.SAM.gov","SAM.gov","USASpending.gov"],correct:2},
+{clue:"This federal system — which replaced CCR, ORCA, and several other legacy databases — consolidates all vendor registration information in one place.",choices:["SAM.gov","FPDS.gov","USASpending.gov","Grants.gov"],correct:0},
+{clue:"Contracting officers are prohibited by law from awarding federal contracts to any business without an active registration in this free government system.",choices:["Grants.gov","FPDS","SAM.gov","PPIRS"],correct:2}
+],
+500:[
+{clue:"This SBA certification recognizes businesses in historically underutilized geographic areas and provides federal set-asides and price preferences.",choices:["Enterprise Zone","HUBZone","Opportunity Zone","Promise Zone"],correct:1},
+{clue:"To maintain this SBA certification, a business must ensure at least 35% of its employees reside in the designated geographic area.",choices:["WOSB","8(a)","DBE","HUBZone"],correct:3},
+{clue:"Holders of this SBA certification receive a 10% price evaluation preference when competing against non-certified firms for federal contracts.",choices:["WOSB","8(a)","HUBZone","DBE"],correct:2},
+{clue:"This SBA certification program, created by the HUBZone Act of 1997, was designed to stimulate economic development in historically underutilized communities.",choices:["Opportunity Zone","HUBZone","Promise Zone","Enterprise Zone"],correct:1}
+]
 },
 "Corporate Bios":{
-  100:{clue:"A professional corporate bio submitted with a proposal is typically written in this grammatical person to convey a formal, objective tone.",choices:["First person","Second person","Third person","Passive voice only"],correct:2},
-  200:{clue:"A strong corporate bio should open with this key information to immediately establish credibility and mission alignment.",choices:["Office location","Number of employees","Core mission and years in business","Social media presence"],correct:2},
-  300:{clue:"When submitting a bio with a proposal, it must be customized to mirror the language and priorities found in this buyer-issued document.",choices:["Your website About page","The RFP or Statement of Work","Your LinkedIn profile","Your investor deck"],correct:1},
-  400:{clue:"This element of a corporate bio distinguishes your company by spotlighting awards, certifications, unique methodologies, or notable clients.",choices:["References","Differentiators","Financial highlights","Employee biographies"],correct:1},
-  500:{clue:"A corporate bio used in government proposals should align with this section of a solicitation — it tells you exactly how you will be scored.",choices:["The budget section","The evaluation criteria","The cover page instructions","The appendix"],correct:1}
+100:[
+{clue:"A professional corporate bio submitted with a proposal is typically written in this grammatical person to convey a formal, objective tone.",choices:["First person","Second person","Third person","Passive voice only"],correct:2},
+{clue:"Writing your corporate bio with 'The company has served over 50 clients' rather than 'We have served' reflects this professional grammatical convention.",choices:["First person","Active voice","Third person","Second person"],correct:2},
+{clue:"Government evaluators expect corporate bios written in this voice, which avoids 'I' and 'we' in favor of the company name or 'the firm.'",choices:["First person","Second person","Third person","Formal passive"],correct:2},
+{clue:"This grammatical choice for corporate bio writing creates the authoritative, objective tone that procurement officers and corporate buyers expect in formal submissions.",choices:["First person","Second person","Third person","Impersonal voice"],correct:2}
+],
+200:[
+{clue:"A strong corporate bio should open with this key information to immediately establish credibility and mission alignment with the buyer.",choices:["Office location","Number of employees","Core mission and years in business","Social media presence"],correct:2},
+{clue:"A bio's opening sentence should clearly establish this — giving buyers immediate context about what the company does and how long it has been in operation.",choices:["Office location","Core mission and years in business","Number of staff","Awards received"],correct:1},
+{clue:"Procurement officers reviewing dozens of bios will stop reading if this critical information — your company's purpose and tenure — is buried rather than leading.",choices:["Social proof","Years in business and core mission","Employee count","Revenue figures"],correct:1},
+{clue:"The most effective corporate bio openings state this clearly in the first sentence, before any details about team members, clients, or capabilities.",choices:["Social media presence","Revenue information","Core mission and years in business","Office locations"],correct:2}
+],
+300:[
+{clue:"When submitting a bio with a proposal, it must be customized to mirror the language and priorities found in this buyer-issued document.",choices:["Your website About page","The RFP or Statement of Work","Your LinkedIn profile","Your investor deck"],correct:1},
+{clue:"Smart vendors create a customized corporate bio for each opportunity by mirroring the exact language and priorities found in this key solicitation document.",choices:["The contract vehicle","The RFP or Statement of Work","Your capability statement","The agency's annual report"],correct:1},
+{clue:"If a buyer's solicitation emphasizes 'equity-centered design' and 'stakeholder engagement,' your corporate bio should reflect this terminology — pulled directly from this source.",choices:["Industry publications","The RFP or Statement of Work","Competitor websites","Past proposals"],correct:1},
+{clue:"Evaluators score bios higher when they demonstrate understanding of the project scope, which requires carefully reading and referencing this document.",choices:["Your company handbook","The RFP or Statement of Work","LinkedIn profiles","Industry reports"],correct:1}
+],
+400:[
+{clue:"This element of a corporate bio distinguishes your company by spotlighting awards, certifications, unique methodologies, or notable clients.",choices:["References","Differentiators","Financial highlights","Employee biographies"],correct:1},
+{clue:"This section of a corporate bio answers the question every procurement officer is silently asking: 'Why should we choose you over everyone else?'",choices:["Company history","Differentiators","Past performance","Core services"],correct:1},
+{clue:"B Corp status, multilingual capabilities, and specialized certifications are all examples of what belongs in this critical corporate bio section.",choices:["Past performance","Company overview","Differentiators","References"],correct:2},
+{clue:"Without this section, a corporate bio risks sounding identical to every competitor — failing to give evaluators a memorable reason to choose your firm.",choices:["Company timeline","References","Differentiators","Employee count"],correct:2}
+],
+500:[
+{clue:"A corporate bio used in government proposals should align with this section of a solicitation — it tells you exactly how you will be scored.",choices:["The budget section","The evaluation criteria","The cover page instructions","The appendix"],correct:1},
+{clue:"Experienced proposal writers read this section of the RFP first because it reveals the exact factors that will determine the winning vendor.",choices:["The cover letter","The evaluation criteria","The past performance section","The pricing instructions"],correct:1},
+{clue:"A corporate bio that doesn't directly address what's outlined in this section of a solicitation is missing its most critical alignment opportunity.",choices:["The executive summary","The evaluation criteria","The technical approach","The pricing schedule"],correct:1},
+{clue:"Ignoring this section when writing your corporate bio is the equivalent of studying the wrong material for an exam — your score will suffer.",choices:["The budget section","The evaluation criteria","The cover page","The appendix"],correct:1}
+]
 },
 "Networking & Buyers":{
-  100:{clue:"This brief, memorable introduction — delivered in 30 seconds or less — tells a buyer who you are, what you do, and the problem you solve.",choices:["Business card","Elevator pitch","Capability statement","Cold call"],correct:1},
-  200:{clue:"This type of procurement event brings small business owners face-to-face with contracting officers and prime contractors.",choices:["Trade show","Matchmaking event","Business expo","Industry day"],correct:1},
-  300:{clue:"Before meeting a contracting officer, savvy business owners study this annually published document revealing agency procurement plans.",choices:["Annual report","Procurement forecast","Budget request","Strategic plan"],correct:1},
-  400:{clue:"This strategy — sending a personalized message within 24-48 hours of meeting a buyer — dramatically increases your chances of being remembered.",choices:["Cold calling","Timely follow-up within 48 hours","Mailing a brochure","Posting on social media"],correct:1},
-  500:{clue:"This federal database lets businesses research awarded contracts by agency, NAICS code, and dollar value — revealing buying patterns and the right officers to target.",choices:["LinkedIn Premium","USASpending.gov","Google Analytics","Grants.gov"],correct:1}
+100:[
+{clue:"This brief, memorable introduction — delivered in 30 seconds or less — tells a buyer who you are, what you do, and the problem you solve.",choices:["Business card","Elevator pitch","Capability statement","Cold call"],correct:1},
+{clue:"This 30-second verbal introduction should clearly state your company name, what you do, who you serve, and the problem you uniquely solve.",choices:["Corporate bio","Elevator pitch","Sales script","Cold email"],correct:1},
+{clue:"Procurement matchmaking events are the perfect venue to deliver this memorized, practiced introduction to contracting officers and prime contractors.",choices:["Capability statement","Elevator pitch","Proposal","Past performance narrative"],correct:1},
+{clue:"Unlike a capability statement which is written, this verbal introduction is your first live impression and should be practiced until it sounds completely natural.",choices:["Corporate bio","Cold call","Elevator pitch","Teaming pitch"],correct:2}
+],
+200:[
+{clue:"This type of procurement event brings small business owners face-to-face with contracting officers and prime contractors to exchange capabilities.",choices:["Trade show","Matchmaking event","Business expo","Industry day"],correct:1},
+{clue:"At this type of structured event, small businesses receive timed one-on-one appointments with corporate and government buyers to make introductions.",choices:["Trade show","Conference","Matchmaking event","Procurement fair"],correct:2},
+{clue:"Events like the Tri-State APEX Mega Matchmaker bring together small businesses and buyers specifically for this type of structured introduction opportunity.",choices:["Trade expo","Matchmaking event","Industry conference","Procurement training"],correct:1},
+{clue:"Before attending one of these events, vendors should research every scheduled buyer and prepare a tailored capability statement for each one.",choices:["Trade conferences","Industry days","Matchmaking events","Business summits"],correct:2}
+],
+300:[
+{clue:"Before meeting a contracting officer, savvy business owners study this annually published document revealing agency procurement plans.",choices:["Annual report","Procurement forecast","Budget request","Strategic plan"],correct:1},
+{clue:"This publicly available planning document — published by federal agencies — lists anticipated contract opportunities and dollar values for the upcoming fiscal year.",choices:["Annual budget","Procurement forecast","Strategic plan","Acquisition plan"],correct:1},
+{clue:"Savvy contractors use this annual agency document to plan their business development pipeline months before solicitations are officially released.",choices:["Agency annual report","Procurement forecast","Congressional budget","Strategic roadmap"],correct:1},
+{clue:"This document — sometimes called an advance acquisition plan — helps small businesses identify opportunities early and begin relationship-building before competition begins.",choices:["Agency newsletter","Procurement forecast","Contract database","Award history"],correct:1}
+],
+400:[
+{clue:"This strategy — sending a personalized message within 24-48 hours of meeting a buyer — dramatically increases your chances of being remembered.",choices:["Cold calling","Timely follow-up within 48 hours","Mailing a brochure","Posting on social media"],correct:1},
+{clue:"Research shows that most business relationships formed at networking events are lost because vendors fail to do this within two days of meeting a buyer.",choices:["Send a proposal","Timely follow-up within 48 hours","Connect on LinkedIn","Send a capability statement"],correct:1},
+{clue:"A personalized email referencing a specific conversation point from your meeting — sent within 48 hours — is the gold standard of this relationship-building practice.",choices:["Cold outreach","Timely follow-up","Social media engagement","Direct mail"],correct:1},
+{clue:"Contracting officers meet dozens of vendors at events; this simple discipline sets professional vendors apart and keeps your company top of mind.",choices:["Sending proposals immediately","Timely follow-up within 48 hours","Social media ads","Phone calls"],correct:1}
+],
+500:[
+{clue:"This federal database lets businesses research awarded contracts by agency, NAICS code, and dollar value — revealing buying patterns and the right officers to target.",choices:["LinkedIn Premium","USASpending.gov","Google Analytics","Grants.gov"],correct:1},
+{clue:"This free federal database allows businesses to search historical contract awards by agency, NAICS code, and location — revealing exactly who is buying what.",choices:["SAM.gov","Grants.gov","USASpending.gov","FPDS Express"],correct:2},
+{clue:"Before approaching a new agency, smart business developers research award history on this site to understand budget patterns and incumbent contractors.",choices:["SAM.gov","Grants.gov","FPDS.gov","USASpending.gov"],correct:3},
+{clue:"This government transparency database shows every federal contract award above the micro-purchase threshold, making it essential for competitive business intelligence.",choices:["Grants.gov","SAM.gov","USASpending.gov","SBA.gov"],correct:2}
+]
 },
 "Supplier Diversity":{
-  100:{clue:"This business practice — adopted by corporations and agencies — intentionally includes small, minority, women-owned, and veteran-owned businesses in purchasing.",choices:["Affirmative action","Supplier diversity","Inclusive subcontracting","Vendor outreach"],correct:1},
-  200:{clue:"This national organization certifies minority-owned businesses and connects them with Fortune 500 supplier diversity programs.",choices:["SBA","NMSDC","WBENC","SCORE"],correct:1},
-  300:{clue:"To prevent 'front companies,' supplier diversity certifications verify that diverse owners exercise this over day-to-day management and long-term decisions.",choices:["Majority of profits","Operational control and management","Marketing responsibility","Accounting oversight"],correct:1},
-  400:{clue:"This contract opportunity — available through large prime contractors on government projects — is a primary entry point for certified diverse businesses.",choices:["Sole-source award","Subcontracting opportunity","Grant award","Cooperative agreement"],correct:1},
-  500:{clue:"This is the federal government's annual small business prime contracting goal as a percentage of all eligible federal contract spending.",choices:["10 percent","15 percent","23 percent","30 percent"],correct:2}
+100:[
+{clue:"This business practice — adopted by corporations and agencies — intentionally includes small, minority, women-owned, and veteran-owned businesses in purchasing.",choices:["Affirmative action","Supplier diversity","Inclusive subcontracting","Vendor outreach"],correct:1},
+{clue:"Many Fortune 500 companies publish annual reports measuring their spend with certified small and diverse vendors — a metric tracked through this program type.",choices:["ESG reporting","Supplier diversity","Vendor management","Inclusive procurement"],correct:1},
+{clue:"Corporate supply chains that implement this practice are shown to be more resilient, innovative, and representative of the communities they serve.",choices:["Global sourcing","Supplier diversity","Vendor rotation","Competitive bidding"],correct:1},
+{clue:"This intentional procurement practice — formally tracked and reported by many large corporations — creates pathways for certified diverse vendors to enter major supply chains.",choices:["Minority outreach","Supplier diversity","Vendor diversity","Inclusive contracting"],correct:1}
+],
+200:[
+{clue:"This national organization certifies minority-owned businesses and connects them with Fortune 500 supplier diversity programs.",choices:["SBA","NMSDC","WBENC","SCORE"],correct:1},
+{clue:"This organization's MBE certification is recognized by hundreds of major corporations as the gold standard for minority business verification.",choices:["SBA","SCORE","NMSDC","WBENC"],correct:2},
+{clue:"With regional affiliate councils across the country, this organization connects certified minority businesses with corporate members actively seeking diverse suppliers.",choices:["WBENC","SCORE","SBA","NMSDC"],correct:3},
+{clue:"This national certifying body defines minority business ownership as at least 51% owned by Asian, Black, Hispanic, or Native American individuals.",choices:["SBA","WBENC","NMSDC","USBLN"],correct:2}
+],
+300:[
+{clue:"To prevent 'front companies,' supplier diversity certifications verify that diverse owners exercise this over day-to-day management and long-term decisions.",choices:["Majority of profits","Operational control and management","Marketing responsibility","Accounting oversight"],correct:1},
+{clue:"Certification reviewers specifically look for evidence that diverse owners make hiring decisions, set company strategy, and sign contracts — all examples of this requirement.",choices:["Financial investment","Operational control and management","Brand ownership","Tax filing responsibility"],correct:1},
+{clue:"A business owned by a minority investor who plays no active role in running the company would fail this key certification requirement.",choices:["Majority ownership","Operational control and management","Revenue thresholds","Employee headcount"],correct:1},
+{clue:"This standard — requiring diverse owners to manage the business day-to-day — is the most scrutinized element of any supplier diversity certification audit.",choices:["Majority equity","Operational control and management","Revenue size","Years in business"],correct:1}
+],
+400:[
+{clue:"This contract opportunity — available through large prime contractors on government projects — is a primary entry point for certified diverse businesses.",choices:["Sole-source award","Subcontracting opportunity","Grant award","Cooperative agreement"],correct:1},
+{clue:"Federal agencies often require prime contractors to maintain a small business plan that sets goals for awarding a percentage of work through this mechanism.",choices:["Sole-source awards","Subcontracting opportunities","Joint ventures","Cooperative agreements"],correct:1},
+{clue:"When a large contractor wins a federal project and hires certified diverse businesses to fulfill portions of the work, those firms receive this type of opportunity.",choices:["Prime contracts","Subcontracting opportunities","Grant awards","Sole-source contracts"],correct:1},
+{clue:"Building relationships with prime contractors — rather than pursuing direct government contracts — is often the fastest path for diverse businesses into federal work through this mechanism.",choices:["Sole-source awards","Subcontracting opportunities","Cooperative agreements","Joint ventures"],correct:1}
+],
+500:[
+{clue:"This is the federal government's annual small business prime contracting goal as a percentage of all eligible federal contract spending.",choices:["10 percent","15 percent","23 percent","30 percent"],correct:2},
+{clue:"This federal small business prime contracting goal — set by the Small Business Act — has been met or exceeded by the government in recent fiscal years.",choices:["15 percent","20 percent","23 percent","25 percent"],correct:2},
+{clue:"Within the overall federal small business goal of this percentage, subcategories exist for women-owned, disadvantaged, veteran-owned, and HUBZone businesses.",choices:["15 percent","20 percent","23 percent","30 percent"],correct:2},
+{clue:"When federal agencies fall short of this government-wide contracting target, it can affect their small business program ratings and leadership accountability.",choices:["15 percent","20 percent","23 percent","35 percent"],correct:2}
+]
 }};
 
 const FJQ={cat:"The Complete 3Cs",clue:"In supplier diversity, this SBA-sponsored formal relationship — where a large established company develops a smaller diverse firm through shared resources, mentoring, and contract pipeline — can dramatically accelerate diverse business growth in the federal marketplace.",choices:["Strategic Alliance Agreement","Mentor-Protégé Program","Teaming Agreement","Joint Venture Contract"],correct:1};
+
+// ── BUILD RANDOMIZED BOARD ──────────────────────────────────────────────────────
+function buildBoard(){
+  const board={};
+  for(const cat of CATS){
+    board[cat]={};
+    for(const pts of PTS){
+      const pool=QBANK[cat][pts];
+      board[cat][pts]={...pool[Math.floor(Math.random()*pool.length)],ai:false};
+    }
+  }
+  return board;
+}
+
+// ── FETCH AI QUESTIONS ──────────────────────────────────────────────────────────
+async function fetchAIQuestions(){
+  if(!AI_WORKER_URL)return null;
+  try{
+    const r=await fetch(AI_WORKER_URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({})});
+    const data=await r.json();
+    return data.questions||null;
+  }catch(e){return null;}
+}
+
+async function injectAIQuestions(room,board){
+  const questions=await fetchAIQuestions();
+  if(!questions||!questions.length)return;
+  const updates={};
+  for(const q of questions){
+    if(q.cat&&q.pts&&q.clue&&q.choices&&q.correct!==undefined){
+      updates[`rooms/${room}/board/${q.cat}/${q.pts}`]={
+        clue:q.clue,choices:q.choices,correct:q.correct,ai:true
+      };
+    }
+  }
+  if(Object.keys(updates).length)await db.ref().update(updates);
+}
 
 // ── SESSION ────────────────────────────────────────────────────────────────────
 let sess=null,gs=null,roomRef=null,localTmr=null,localT=QT,tmrKey=null;
@@ -115,28 +286,42 @@ function clearSess(){sess=null;localStorage.removeItem('628-jeopardy')}
 
 // ── FIREBASE HELPERS ───────────────────────────────────────────────────────────
 function makeCode(){const c='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';return Array.from({length:4},()=>c[Math.floor(Math.random()*c.length)]).join('')}
-
 function makeDDs(){const pool=[];for(const c of CATS)for(const p of[200,300,400,500])pool.push(`${c}|${p}`);return pool.sort(()=>Math.random()-.5).slice(0,2)}
 
-function freshState(hostName){return{phase:'lobby',players:[{name:hostName||'Host',score:0}],answered:{},selector:0,dds:makeDDs(),activeQ:null,buzzed:-1,choice:-1,showAns:false,result:null,lockedWager:0,fjWagers:null,fjAnswers:null,fjRevealIdx:0,fjRevealAnswers:null,timeStart:0}}
+function freshState(hostName,board){
+  return{phase:'lobby',players:[{name:hostName||'Host',score:0}],board,answered:{},selector:0,
+    dds:makeDDs(),activeQ:null,buzzed:-1,choice:-1,showAns:false,result:null,
+    lockedWager:0,fjWagers:null,fjAnswers:null,fjRevealIdx:0,fjRevealAnswers:null,timeStart:0};
+}
 
 function toArr(obj){if(!obj)return[];if(Array.isArray(obj))return obj;return Object.keys(obj).sort((a,b)=>Number(a)-Number(b)).map(k=>obj[k])}
 
 function norm(raw){
   if(!raw)return null;
-  return{...raw,
-    players:toArr(raw.players),
-    dds:toArr(raw.dds),
+  const n={...raw,players:toArr(raw.players),dds:toArr(raw.dds),
     fjWagers:raw.fjWagers?toArr(raw.fjWagers):null,
     fjAnswers:raw.fjAnswers?toArr(raw.fjAnswers):null,
-    fjRevealAnswers:raw.fjRevealAnswers?toArr(raw.fjRevealAnswers):null,
-  };
+    fjRevealAnswers:raw.fjRevealAnswers?toArr(raw.fjRevealAnswers):null};
+  // Normalize nested board object
+  if(raw.board){
+    n.board={};
+    for(const cat of CATS){
+      n.board[cat]={};
+      for(const pts of PTS){
+        n.board[cat][pts]=raw.board[cat]?.[pts]||QBANK[cat][pts][0];
+      }
+    }
+  }
+  return n;
 }
 
 async function createRoom(hostName){
   let code;
   for(let i=0;i<10;i++){code=makeCode();const s=await db.ref(`rooms/${code}`).get();if(!s.exists())break}
-  await db.ref(`rooms/${code}`).set(freshState(hostName));
+  const board=buildBoard();
+  await db.ref(`rooms/${code}`).set(freshState(hostName,board));
+  // Inject AI questions in background
+  injectAIQuestions(code,board).catch(()=>{});
   return code;
 }
 
@@ -157,7 +342,6 @@ function listenRoom(room){
   });
 }
 
-const setRoom=(room,state)=>db.ref(`rooms/${room}`).set(state);
 const updRoom=(room,changes)=>db.ref(`rooms/${room}`).update(changes);
 
 async function txBuzz(room,idx){
@@ -165,7 +349,6 @@ async function txBuzz(room,idx){
   return res.committed;
 }
 
-// ── TIMER ──────────────────────────────────────────────────────────────────────
 function startLocalTimer(maxT){
   if(localTmr)clearInterval(localTmr);
   localTmr=setInterval(()=>{
@@ -184,6 +367,8 @@ const done=()=>gs?Object.values(gs.answered||{}).reduce((s,c)=>s+Object.keys(c).
 const total=CATS.length*PTS.length;
 const isHost=()=>!!sess?.isHost;
 const myIdx=()=>sess?.idx??0;
+const getQ=(cat,pts)=>gs?.board?.[cat]?.[pts]||QBANK[cat][pts][0];
+const isAI=(cat,pts)=>gs?.board?.[cat]?.[pts]?.ai===true;
 
 function scoreCards(hl){
   if(!gs?.players)return'';
@@ -202,21 +387,20 @@ function render(){
   isHost()?renderHost():renderPlayer();
 }
 
-// ── LOBBY ──────────────────────────────────────────────────────────────────────
 function renderLobby(){
   const jc=new URLSearchParams(location.search).get('join')||'';
   app().innerHTML=`<div class="screen"><div class="card">
     <div class="tc" style="margin-bottom:20px">
       <div class="badge">628 Digital Design Presents</div>
       <h1>The 3Cs of Contracting</h1>
-      <div class="sub">Live Multiplayer Challenge</div>
+      <div class="sub">Live Multiplayer · AI-Powered</div>
       <div class="hint" style="margin-top:6px">Capability Statements · Certifications · Corporate Bios<br>Networking & Buyers · Supplier Diversity</div>
     </div>
     <div style="margin-bottom:10px"><div style="font-size:12px;color:#E9F5F5;margin-bottom:4px">Create a New Game — Host Name</div>
       <input class="inp" id="hname" placeholder="Your name" maxlength="20"></div>
     <button class="btn btn-p" onclick="doCreate()">Create Game 🏆</button>
     <div class="divl">— HAVE A ROOM CODE? —</div>
-    ${jc?`<div style="background:#1A6B6B;border-radius:8px;padding:10px;tc;margin-bottom:10px;text-align:center"><div style="font-size:9px;color:#3AAFC2;letter-spacing:2px;margin-bottom:2px">JOINING ROOM</div><div style="font-size:26px;font-weight:bold;letter-spacing:6px">${jc}</div></div>`:''}
+    ${jc?`<div style="background:#1A6B6B;border-radius:8px;padding:10px;text-align:center;margin-bottom:10px"><div style="font-size:9px;color:#3AAFC2;letter-spacing:2px;margin-bottom:2px">JOINING ROOM</div><div style="font-size:26px;font-weight:bold;letter-spacing:6px">${jc}</div></div>`:''}
     <div style="display:flex;gap:8px;margin-bottom:8px">
       <input class="inp" id="rcode" placeholder="Room code" maxlength="4" value="${jc}" style="text-transform:uppercase;letter-spacing:4px;font-size:18px;text-align:center;flex:1">
       <input class="inp" id="pname" placeholder="Your name" maxlength="20" style="flex:2">
@@ -229,7 +413,7 @@ function renderLobby(){
 async function doCreate(){
   const name=(document.getElementById('hname')?.value||'').trim();
   if(!name){alert('Please enter your name');return}
-  app().innerHTML=`<div class="screen"><div class="card tc"><h1 style="color:#3AAFC2">Creating room…</h1></div></div>`;
+  app().innerHTML=`<div class="screen"><div class="card tc"><h1 style="color:#3AAFC2">Creating room…</h1><p class="hint" style="margin-top:12px">✨ Generating fresh questions with AI…</p></div></div>`;
   try{
     const code=await createRoom(name);
     saveSess({room:code,idx:0,name,isHost:true});
@@ -257,22 +441,24 @@ async function doJoin(){
   }catch(e){app().innerHTML=`<div class="screen"><div class="card tc"><h1 style="color:#ef4444">Could not join</h1><p class="hint mt12">Room not found or check your code.</p><button class="btn btn-s mt16" onclick="clearSess();renderLobby()">Back</button></div></div>`}
 }
 
-// ── HOST VIEW ──────────────────────────────────────────────────────────────────
 function renderHost(){
   const{phase}=gs;
   const shareUrl=`${location.origin}/?join=${sess.room}`;
   let html=`<div style="padding:10px 8px;min-height:100vh;background:#0b3030">
-    <div class="tc" style="margin-bottom:6px"><div style="font-size:15px;font-weight:bold">3Cs of Contracting</div>
-    <div style="font-size:9px;color:#3AAFC2;letter-spacing:2px">HOST · ROOM <b style="letter-spacing:4px">${sess.room}</b></div></div>
-    ${scoreCards(gs.selector)}`;
+    <div class="tc" style="margin-bottom:6px">
+      <div style="font-size:15px;font-weight:bold">3Cs of Contracting</div>
+      <div style="font-size:9px;color:#3AAFC2;letter-spacing:2px">HOST · ROOM <b style="letter-spacing:4px">${sess.room}</b></div>
+    </div>${scoreCards(gs.selector)}`;
 
   if(phase==='lobby'){
+    const aiCount=gs.board?Object.values(gs.board).reduce((s,cat)=>s+Object.values(cat).filter(q=>q.ai).length,0):0;
     html+=`<div class="card" style="max-width:500px;margin:0 auto">
       <div class="tc" style="margin-bottom:14px">
         <div style="font-size:11px;color:#3AAFC2;margin-bottom:6px">Share this link with players:</div>
         <div style="background:#1A6B6B;border-radius:8px;padding:10px;font-size:12px;word-break:break-all">${shareUrl}</div>
         <button class="btn btn-s btn-sm mt8" style="max-width:160px;display:inline-block" onclick="navigator.clipboard.writeText('${shareUrl}').then(()=>this.textContent='✓ Copied!')">📋 Copy Join Link</button>
       </div>
+      ${aiCount>0?`<div style="background:#14532d;border:1px solid #22C55E;border-radius:8px;padding:8px 12px;text-align:center;margin-bottom:12px;font-size:11px;color:#22C55E">✨ ${aiCount} AI-generated questions loaded into this game!</div>`:'<div style="background:#1a3a2a;border-radius:8px;padding:8px 12px;text-align:center;margin-bottom:12px;font-size:11px;color:#4a8888">🎲 Board randomized · AI questions loading…</div>'}
       <div style="font-size:11px;color:#4a8888;margin-bottom:8px">Players joined (${gs.players.length}):</div>
       <div class="plist">${gs.players.map((p,i)=>`<div class="pi"><span style="color:${PC[i%PC.length]}">●</span>${p.name}${i===0?' 👑 Host':''}</div>`).join('')}</div>
       <div style="font-size:10px;color:#4a8888;text-align:center;margin:12px 0">Waiting for everyone, then click Start!</div>
@@ -282,9 +468,18 @@ function renderHost(){
     html+=`<div class="board-wrap"><div class="board">
       <div class="bgrid" style="grid-template-columns:repeat(${CATS.length},1fr)">
         ${CATS.map(cat=>`<div class="cat-h">${cat}</div>`).join('')}
-        ${PTS.map(pts=>CATS.map(cat=>{const d=gs.answered[cat]?.[pts];return`<button class="${d?'tile tile-d':'tile tile-a'}" ${d?'disabled':''} onclick="${d?'':'hostPick(\''+cat+'\','+pts+')'}">${d?'✓':'$'+pts}</button>`}).join('')).join('')}
+        ${PTS.map(pts=>CATS.map(cat=>{
+          const d=gs.answered[cat]?.[pts];
+          const ai=!d&&isAI(cat,pts);
+          return`<button class="${d?'tile tile-d':ai?'tile tile-ai':'tile tile-a'}" ${d?'disabled':''} onclick="${d?'':'hostPick(\''+cat+'\','+pts+')'}">
+            ${d?'✓':'$'+pts}${ai?'<span class="ai-dot">✨</span>':''}
+          </button>`;
+        }).join('')).join('')}
       </div>
-      <div class="tc" style="margin-top:8px;color:#4a8888;font-size:10px">${done()}/${total} answered · Selector: <span style="color:#3AAFC2">${gs.players[gs.selector]?.name}</span></div>
+      <div style="display:flex;justify-content:space-between;margin-top:8px;padding:0 4px">
+        <div style="color:#4a8888;font-size:10px">${done()}/${total} answered · Selector: <span style="color:#3AAFC2">${gs.players[gs.selector]?.name}</span></div>
+        <div style="color:#22C55E;font-size:10px">✨ = AI question</div>
+      </div>
     </div></div>`;
   }else if(phase==='question'||phase==='dailydouble'){
     html+=renderHostQ();
@@ -298,10 +493,13 @@ function renderHost(){
 
 function renderHostQ(){
   if(!gs.activeQ)return'';
-  const{clue,choices,correct,isDD,cat,pts}=gs.activeQ;
+  const{clue,choices,correct,isDD,cat,pts,ai}=gs.activeQ;
   let h=`<div style="max-width:600px;margin:0 auto;background:#0d2f2f;border-radius:16px;padding:20px">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <span style="color:${isDD?'#FFD700':'#3AAFC2'};font-size:11px">${isDD?'⭐ DAILY DOUBLE':cat}</span>
+      <div>
+        ${ai?'<div class="ai-badge">✨ AI GENERATED</div>':''}
+        <span style="color:${isDD?'#FFD700':'#3AAFC2'};font-size:11px;display:block">${isDD?'⭐ DAILY DOUBLE':cat}</span>
+      </div>
       <div style="display:flex;align-items:center;gap:10px">
         <span style="font-weight:bold">${isDD?`Wager: $${gs.lockedWager}`:`$${pts}`}</span>
         ${!gs.showAns?`<span id="tv" style="color:${tc(localT)};font-size:18px;font-weight:bold">${localT}s</span>`:''}
@@ -355,7 +553,6 @@ function renderDDModal(){
   </div></div>`;
 }
 
-// ── PLAYER VIEW ────────────────────────────────────────────────────────────────
 function renderPlayer(){
   const{phase}=gs;const me=gs.players[myIdx()];
   const buzzed=gs.buzzed===myIdx();const otherBuzzed=gs.buzzed!==-1&&!buzzed;const myDD=gs.activeQ?.isDD&&gs.selector===myIdx();
@@ -365,23 +562,18 @@ function renderPlayer(){
       <div style="font-size:9px;color:#3AAFC2;letter-spacing:2px">ROOM ${sess.room} · <span style="color:${PC[myIdx()%PC.length]}">${me?.name}</span></div>
     </div>${scoreCards(gs.selector)}`;
 
-  if(phase==='lobby'){
-    html+=`<div class="tc" style="padding:30px 16px"><div style="font-size:40px;margin-bottom:12px">⏳</div><div style="font-size:18px;margin-bottom:8px">Game starting soon!</div><div class="hint">You're in as <span style="color:${PC[myIdx()%PC.length]}">${me?.name}</span>. Waiting for host…</div></div>`;
-  }else if(phase==='game'){
-    const sel=gs.players[gs.selector]?.name;
-    html+=`<div class="tc" style="padding:30px 16px"><div style="font-size:36px;margin-bottom:12px">${gs.selector===myIdx()?'🎯':'👀'}</div><div style="font-size:17px;margin-bottom:6px">${gs.selector===myIdx()?"It's YOUR turn to pick!":`${sel} is picking…`}</div><div class="hint">${done()}/${total} answered</div></div>`;
-  }else if(phase==='question'||phase==='dailydouble'){
-    html+=renderPlayerQ(buzzed,otherBuzzed,myDD);
-  }
+  if(phase==='lobby'){html+=`<div class="tc" style="padding:30px 16px"><div style="font-size:40px;margin-bottom:12px">⏳</div><div style="font-size:18px;margin-bottom:8px">Game starting soon!</div><div class="hint">You're in as <span style="color:${PC[myIdx()%PC.length]}">${me?.name}</span>. Waiting for host…</div></div>`;}
+  else if(phase==='game'){const sel=gs.players[gs.selector]?.name;html+=`<div class="tc" style="padding:30px 16px"><div style="font-size:36px;margin-bottom:12px">${gs.selector===myIdx()?'🎯':'👀'}</div><div style="font-size:17px;margin-bottom:6px">${gs.selector===myIdx()?"It's YOUR turn to pick!":`${sel} is picking…`}</div><div class="hint">${done()}/${total} answered</div></div>`;}
+  else if(phase==='question'||phase==='dailydouble'){html+=renderPlayerQ(buzzed,otherBuzzed,myDD);}
   html+=`</div>`;app().innerHTML=html;
 }
 
 function renderPlayerQ(buzzed,otherBuzzed,myDD){
   if(!gs.activeQ)return'';
-  const{clue,choices,correct,isDD}=gs.activeQ;
+  const{clue,choices,correct,isDD,ai}=gs.activeQ;
   let h=`<div style="background:#0d2f2f;border-radius:14px;padding:18px;max-width:520px;margin:0 auto">
     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-      <span style="color:${isDD?'#FFD700':'#3AAFC2'};font-size:11px">${isDD?'⭐ DAILY DOUBLE':gs.activeQ.cat} · $${gs.activeQ.pts}</span>
+      <div>${ai?'<div class="ai-badge">✨ AI GENERATED</div>':''}<span style="color:${isDD?'#FFD700':'#3AAFC2'};font-size:11px;display:block">${isDD?'⭐ DAILY DOUBLE':gs.activeQ.cat} · $${gs.activeQ.pts}</span></div>
       <span id="tv" style="color:${tc(localT)};font-size:18px;font-weight:bold">${localT}s</span>
     </div>
     <div class="tbar"><div id="tb" class="tfill" style="width:${(localT/QT)*100}%;background:${tc(localT)}"></div></div>
@@ -410,35 +602,23 @@ function renderPlayerQ(buzzed,otherBuzzed,myDD){
     });
     h+=`</div>`;
   }
-
-  if(gs.showAns){
-    const p=isDD?gs.lockedWager:gs.activeQ.pts;
-    h+=`<div class="tc" style="margin-top:10px"><div style="font-size:18px;font-weight:bold;color:${gs.result===true?'#22C55E':gs.result==='timeout'?'#f59e0b':'#ef4444'}">${gs.result===true?`✅ +$${p}`:gs.result===false?`❌ -$${p}`:'⏱ Time\'s Up!'}</div><div class="hint" style="margin-top:6px">Waiting for host…</div></div>`;
-  }
+  if(gs.showAns){const p=isDD?gs.lockedWager:gs.activeQ.pts;h+=`<div class="tc" style="margin-top:10px"><div style="font-size:18px;font-weight:bold;color:${gs.result===true?'#22C55E':gs.result==='timeout'?'#f59e0b':'#ef4444'}">${gs.result===true?`✅ +$${p}`:gs.result===false?`❌ -$${p}`:'⏱ Time\'s Up!'}</div><div class="hint" style="margin-top:6px">Waiting for host…</div></div>`;}
   h+=`</div>`;return h;
 }
 
-// ── FINAL JEOPARDY ─────────────────────────────────────────────────────────────
 function renderFJWager(){
   const me=myIdx();const myW=gs.fjWagers?.[me];const wagered=(gs.fjWagers||[]).filter(w=>w!==null&&w!==undefined).length;const allW=gs.fjWagers&&gs.fjWagers.length===gs.players.length&&gs.fjWagers.every(w=>w!==null&&w!==undefined);const maxW=Math.max(gs.players[me]?.score||0,500);
   let inner;
-  if(isHost()){
-    inner=`<div style="font-size:9px;letter-spacing:3px;color:#FFD700;margin-bottom:8px">⭐ FINAL JEOPARDY</div><div style="font-size:28px;font-weight:bold;color:#FFD700;margin-bottom:6px">FINAL JEOPARDY!</div><div style="color:#f0d98a;font-size:13px;margin-bottom:16px">Category: <b>${FJQ.cat}</b></div><div class="hint tc" style="margin-bottom:16px">Players are wagering privately on their devices.</div>${scoreCards(-1)}<div style="color:#3AAFC2;font-size:13px;text-align:center;margin:12px 0">${wagered}/${gs.players.length} players wagered</div>${allW?`<button class="btn btn-g" onclick="hostStartFJQ()">Everyone's Ready — Start! 🎬</button>`:'<div class="hint tc">Waiting for all players to wager…</div>'}`;
-  }else{
-    inner=`<div style="font-size:9px;letter-spacing:3px;color:#FFD700;margin-bottom:8px">⭐ FINAL JEOPARDY</div><div style="font-size:28px;font-weight:bold;color:#FFD700;margin-bottom:6px">FINAL JEOPARDY!</div><div style="color:#f0d98a;font-size:13px;margin-bottom:16px">Category: <b>${FJQ.cat}</b></div>${myW!==null&&myW!==undefined?`<div class="tc" style="padding:20px"><div style="font-size:36px;margin-bottom:8px">✅</div><div style="font-size:16px;color:#22C55E">Wager locked: $${myW.toLocaleString()}</div><div class="hint" style="margin-top:8px">Waiting (${wagered}/${gs.players.length} done)…</div></div>`:`<div style="background:#0d0900;border-radius:10px;padding:14px;margin-bottom:14px;border:1px solid #3a2800"><div style="color:${PC[me%PC.length]};font-size:13px;font-weight:bold;margin-bottom:4px">${gs.players[me]?.name} — Private Wager</div><div class="hint" style="margin-bottom:10px">Others can't see this. Max: $${maxW.toLocaleString()}</div><input type="number" id="fjw" min="100" max="${maxW}" value="100" style="width:100%;padding:10px;border-radius:8px;border:2px solid #FFD700;background:#1a1000;color:#FFD700;font-size:22px;font-family:Georgia,serif;text-align:center;box-sizing:border-box"><input type="range" min="100" max="${maxW}" value="100" oninput="document.getElementById('fjw').value=this.value" style="width:100%;margin-top:10px;accent-color:#FFD700"></div><button class="btn btn-g" onclick="playerFJWager()">Lock In My Wager →</button>`}`;
-  }
+  if(isHost()){inner=`<div style="font-size:9px;letter-spacing:3px;color:#FFD700;margin-bottom:8px">⭐ FINAL JEOPARDY</div><div style="font-size:28px;font-weight:bold;color:#FFD700;margin-bottom:6px">FINAL JEOPARDY!</div><div style="color:#f0d98a;font-size:13px;margin-bottom:16px">Category: <b>${FJQ.cat}</b></div><div class="hint tc" style="margin-bottom:16px">Players are wagering privately on their devices.</div>${scoreCards(-1)}<div style="color:#3AAFC2;font-size:13px;text-align:center;margin:12px 0">${wagered}/${gs.players.length} players wagered</div>${allW?`<button class="btn btn-g" onclick="hostStartFJQ()">Everyone's Ready — Start! 🎬</button>`:'<div class="hint tc">Waiting for all players to wager…</div>'}`;}
+  else{inner=`<div style="font-size:9px;letter-spacing:3px;color:#FFD700;margin-bottom:8px">⭐ FINAL JEOPARDY</div><div style="font-size:28px;font-weight:bold;color:#FFD700;margin-bottom:6px">FINAL JEOPARDY!</div><div style="color:#f0d98a;font-size:13px;margin-bottom:16px">Category: <b>${FJQ.cat}</b></div>${myW!==null&&myW!==undefined?`<div class="tc" style="padding:20px"><div style="font-size:36px;margin-bottom:8px">✅</div><div style="font-size:16px;color:#22C55E">Wager locked: $${myW.toLocaleString()}</div><div class="hint" style="margin-top:8px">Waiting (${wagered}/${gs.players.length} done)…</div></div>`:`<div style="background:#0d0900;border-radius:10px;padding:14px;margin-bottom:14px;border:1px solid #3a2800"><div style="color:${PC[me%PC.length]};font-size:13px;font-weight:bold;margin-bottom:4px">${gs.players[me]?.name} — Private Wager</div><div class="hint" style="margin-bottom:10px">Others can't see this. Max: $${maxW.toLocaleString()}</div><input type="number" id="fjw" min="100" max="${maxW}" value="100" style="width:100%;padding:10px;border-radius:8px;border:2px solid #FFD700;background:#1a1000;color:#FFD700;font-size:22px;font-family:Georgia,serif;text-align:center;box-sizing:border-box"><input type="range" min="100" max="${maxW}" value="100" oninput="document.getElementById('fjw').value=this.value" style="width:100%;margin-top:10px;accent-color:#FFD700"></div><button class="btn btn-g" onclick="playerFJWager()">Lock In My Wager →</button>`}`;}
   app().innerHTML=`<div class="screen fj-bg"><div class="fj-card tc">${inner}</div></div>`;
 }
 
 function renderFJQ(){
   const me=myIdx();const myAns=gs.fjAnswers?.[me];const answeredCount=(gs.fjAnswers||[]).filter(a=>a!==null&&a!==undefined).length;const allAns=gs.fjAnswers&&gs.fjAnswers.length===gs.players.length&&gs.fjAnswers.every(a=>a!==null&&a!==undefined);const tDone=localT<=0;
   let inner=`<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px"><div style="color:#FFD700;font-size:11px;font-weight:bold">⭐ Final Jeopardy — ${FJQ.cat}</div><div id="tv" style="color:${tc(localT)};font-size:20px;font-weight:bold">${localT}s</div></div><div class="tbar"><div id="tb" class="tfill" style="width:${(localT/FJT)*100}%;background:${tc(localT)}"></div></div><div style="background:#0d0900;border-radius:10px;padding:14px;margin-bottom:16px;text-align:center;border:1px solid #3a2800"><p style="color:#f0d98a;font-size:14px;line-height:1.55">${FJQ.clue}</p></div>`;
-  if(isHost()){
-    inner+=`<div class="hint tc" style="margin-bottom:10px">Players are answering on their devices</div>${scoreCards(-1)}<div style="color:#3AAFC2;font-size:12px;text-align:center;margin:10px 0">${answeredCount}/${gs.players.length} answered</div>${allAns||tDone?`<button class="btn btn-g mt8" onclick="hostFJReveal()">🎬 Reveal Results!</button>`:'<div class="hint tc">Waiting for all answers…</div>'}`;
-  }else{
-    inner+=`<div class="choices">`;FJQ.choices.forEach((ch,ci)=>{const picked=myAns===ci;inner+=`<button class="ch" style="border:2px solid ${picked?PC[me%PC.length]:'#3a2800'};background:${picked?'#0d2f2f':'#0d0900'};color:${picked?PC[me%PC.length]:'#888'}" onclick="playerFJAnswer(${ci})">${'ABCD'[ci]}. ${ch}${picked?' ✓':''}</button>`;});
-    inner+=`</div>`;if(myAns!==null&&myAns!==undefined)inner+=`<div style="color:#22C55E;text-align:center;font-size:12px;margin-top:8px">✓ Saved! Waiting for host to reveal…</div>`;
-  }
+  if(isHost()){inner+=`<div class="hint tc" style="margin-bottom:10px">Players are answering on their devices</div>${scoreCards(-1)}<div style="color:#3AAFC2;font-size:12px;text-align:center;margin:10px 0">${answeredCount}/${gs.players.length} answered</div>${allAns||tDone?`<button class="btn btn-g mt8" onclick="hostFJReveal()">🎬 Reveal Results!</button>`:'<div class="hint tc">Waiting for all answers…</div>'}`;}
+  else{inner+=`<div class="choices">`;FJQ.choices.forEach((ch,ci)=>{const picked=myAns===ci;inner+=`<button class="ch" style="border:2px solid ${picked?PC[me%PC.length]:'#3a2800'};background:${picked?'#0d2f2f':'#0d0900'};color:${picked?PC[me%PC.length]:'#888'}" onclick="playerFJAnswer(${ci})">${'ABCD'[ci]}. ${ch}${picked?' ✓':''}</button>`;});inner+=`</div>`;if(myAns!==null&&myAns!==undefined)inner+=`<div style="color:#22C55E;text-align:center;font-size:12px;margin-top:8px">✓ Saved! Waiting for host to reveal…</div>`;}
   app().innerHTML=`<div class="screen fj-bg"><div class="fj-card" style="max-width:580px">${inner}</div></div>`;
 }
 
@@ -466,85 +646,57 @@ function renderGameOver(){
   </div></div>`;
 }
 
-// ── HOST ACTIONS ───────────────────────────────────────────────────────────────
 async function hostStart(){await updRoom(sess.room,{phase:'game'})}
-
 async function hostPick(cat,pts){
-  const isDD=gs.dds.includes(`${cat}|${pts}`);
-  await updRoom(sess.room,{phase:isDD?'dailydouble':'question',activeQ:{cat,pts,...Q[cat][pts],isDD},buzzed:-1,choice:-1,showAns:false,result:null,lockedWager:0,timeStart:Date.now()});
+  const q=getQ(cat,pts);const isDD=gs.dds.includes(`${cat}|${pts}`);
+  await updRoom(sess.room,{phase:isDD?'dailydouble':'question',activeQ:{cat,pts,...q,isDD},buzzed:-1,choice:-1,showAns:false,result:null,lockedWager:0,timeStart:Date.now()});
 }
-
 async function hostForceBuzz(idx){await updRoom(sess.room,{buzzed:idx})}
-
 async function hostAnswer(ci){
   if(!gs.activeQ||gs.showAns)return;
-  const ok=ci===gs.activeQ.correct;
-  const pts=gs.activeQ.isDD?gs.lockedWager:gs.activeQ.pts;
-  const who=gs.activeQ.isDD?gs.selector:gs.buzzed;
+  const ok=ci===gs.activeQ.correct;const pts=gs.activeQ.isDD?gs.lockedWager:gs.activeQ.pts;const who=gs.activeQ.isDD?gs.selector:gs.buzzed;
   if(who===-1&&!gs.activeQ.isDD)return;
   const np=gs.players.map((p,i)=>({...p,score:i===who?p.score+(ok?pts:-pts):p.score}));
   const na={...gs.answered,[gs.activeQ.cat]:{...(gs.answered[gs.activeQ.cat]||{}),[gs.activeQ.pts]:true}};
   await updRoom(sess.room,{choice:ci,showAns:true,result:ok,players:np,answered:na,selector:ok?who:(gs.selector+1)%gs.players.length});
 }
-
 async function hostLockDD(){
-  const maxW=Math.max(gs.players[gs.selector]?.score||0,500);
-  const w=Math.max(100,Math.min(parseInt(document.getElementById('ddw')?.value||100),maxW));
+  const maxW=Math.max(gs.players[gs.selector]?.score||0,500);const w=Math.max(100,Math.min(parseInt(document.getElementById('ddw')?.value||100),maxW));
   await updRoom(sess.room,{phase:'question',lockedWager:w,timeStart:Date.now()});
 }
-
 async function hostContinue(){
   if(done()>=total){await updRoom(sess.room,{phase:'fj_wager',fjWagers:gs.players.map(()=>null),fjAnswers:gs.players.map(()=>null)});}
   else{await updRoom(sess.room,{phase:'game',activeQ:null});}
 }
-
 async function hostStartFJQ(){await updRoom(sess.room,{phase:'fj_question',timeStart:Date.now()})}
-
 async function hostFJReveal(){
   const answers=gs.fjAnswers||gs.players.map(()=>-1);
   const np=gs.players.map((p,i)=>{const ok=answers[i]===FJQ.correct;const w=gs.fjWagers?.[i]||0;return{...p,score:p.score+(ok?w:-w)}});
   await updRoom(sess.room,{phase:'fj_reveal',fjRevealIdx:0,fjRevealAnswers:answers,players:np});
 }
-
-async function hostNextReveal(){
-  const next=(gs.fjRevealIdx||0)+1;
-  await updRoom(sess.room,{phase:next>=gs.players.length?'gameover':'fj_reveal',fjRevealIdx:next});
-}
-
+async function hostNextReveal(){const next=(gs.fjRevealIdx||0)+1;await updRoom(sess.room,{phase:next>=gs.players.length?'gameover':'fj_reveal',fjRevealIdx:next});}
 async function hostEnd(){await updRoom(sess.room,{phase:'gameover'})}
 
-// ── PLAYER ACTIONS ─────────────────────────────────────────────────────────────
 async function playerBuzz(){await txBuzz(sess.room,myIdx())}
-
 async function playerAnswer(ci){
-  if(!gs.activeQ||gs.showAns)return;
-  const who=gs.activeQ.isDD?gs.selector:gs.buzzed;
-  if(who!==myIdx())return;
-  const ok=ci===gs.activeQ.correct;
-  const pts=gs.activeQ.isDD?gs.lockedWager:gs.activeQ.pts;
+  if(!gs.activeQ||gs.showAns)return;const who=gs.activeQ.isDD?gs.selector:gs.buzzed;if(who!==myIdx())return;
+  const ok=ci===gs.activeQ.correct;const pts=gs.activeQ.isDD?gs.lockedWager:gs.activeQ.pts;
   const np=gs.players.map((p,i)=>({...p,score:i===who?p.score+(ok?pts:-pts):p.score}));
   const na={...gs.answered,[gs.activeQ.cat]:{...(gs.answered[gs.activeQ.cat]||{}),[gs.activeQ.pts]:true}};
   await updRoom(sess.room,{choice:ci,showAns:true,result:ok,players:np,answered:na,selector:ok?who:(gs.selector+1)%gs.players.length});
 }
-
 async function playerFJWager(){
   const me=myIdx();const maxW=Math.max(gs.players[me]?.score||0,500);
   const w=Math.max(100,Math.min(parseInt(document.getElementById('fjw')?.value||100),maxW));
   await db.ref(`rooms/${sess.room}/fjWagers/${me}`).set(w);
 }
+async function playerFJAnswer(ci){await db.ref(`rooms/${sess.room}/fjAnswers/${myIdx()}`).set(ci);}
 
-async function playerFJAnswer(ci){
-  await db.ref(`rooms/${sess.room}/fjAnswers/${myIdx()}`).set(ci);
-}
-
-// ── INIT ───────────────────────────────────────────────────────────────────────
 loadSess();
 if(sess?.room){
   app().innerHTML=`<div class="screen"><div class="card tc"><div class="badge">628 Digital Design</div><h1>Reconnecting…</h1></div></div>`;
   listenRoom(sess.room);
-}else{
-  renderLobby();
-}
+}else{renderLobby();}
 </script>
 </body>
 </html>
